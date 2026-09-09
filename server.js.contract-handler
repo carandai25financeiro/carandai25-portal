@@ -1,0 +1,436 @@
+// ============================================================================
+// CONTRATO - ENVIO E ASSINATURA DIGITAL VIA CONTRACTKTOR
+// ============================================================================
+
+/**
+ * Endpoint: POST /api/contract/send
+ * Descrição: Envia o contrato de participação para a marca assinar digitalmente
+ */
+async function sendContractToSign(req, res) {
+  try {
+    const { brandId, email, brandName, cnpj, segment, contractValue, furniture } = req.body;
+
+    // Validações
+    if (!brandId || !email || !brandName) {
+      return json(res, 400, { error: 'Missing required fields: brandId, email, brandName' });
+    }
+
+    // 1. Preparar dados do contrato
+    const contractData = {
+      brandId,
+      email,
+      brandName,
+      cnpj,
+      segment,
+      contractValue: formatMoney(contractValue),
+      furniture,
+      createdAt: new Date().toISOString(),
+      status: 'pending_signature'
+    };
+
+    // 2. Gerar link Contractktor (mock - substituir com integração real)
+    const contractktorLink = await generateContractktorLink(contractData);
+
+    // 3. Preparar template do email
+    const emailTemplate = await prepareContractEmail(contractData, contractktorLink);
+
+    // 4. Enviar email
+    const emailSent = await sendEmail({
+      to: email,
+      subject: '🎉 Carandaí 25 - Contrato de Participação para Assinatura Digital',
+      html: emailTemplate,
+      from: 'carandai25comercial@gmail.com'
+    });
+
+    if (!emailSent) {
+      return json(res, 500, { error: 'Failed to send contract email' });
+    }
+
+    // 5. Registrar no banco de dados
+    await db.run(`
+      INSERT INTO contracts (brand_id, email, brand_name, cnpj, segment, value, furniture, 
+                            contractktor_link, status, sent_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      brandId, email, brandName, cnpj, segment, contractValue, 
+      JSON.stringify(furniture), contractktorLink, 'pending_signature', new Date()
+    ]);
+
+    // 6. Registrar log
+    console.log(`✅ Contract sent to ${email} for ${brandName}`);
+
+    return json(res, 200, {
+      ok: true,
+      message: 'Contract email sent successfully',
+      contractId: brandId,
+      status: 'pending_signature',
+      contractktorLink
+    });
+
+  } catch (error) {
+    console.error('❌ Error sending contract:', error);
+    return json(res, 500, { error: error.message });
+  }
+}
+
+/**
+ * Gerar link Contractktor para assinatura
+ * Integração com plataforma: www.contractktor.com.br
+ */
+async function generateContractktorLink(contractData) {
+  try {
+    // TODO: Integrar com API Contractktor
+    // Esta é a estrutura de integração esperada:
+    
+    const contractktorApiKey = process.env.CONTRACTKTOR_API_KEY;
+    const contractktorAccountId = process.env.CONTRACTKTOR_ACCOUNT_ID;
+    
+    if (!contractktorApiKey || !contractktorAccountId) {
+      console.warn('⚠️ Contractktor credentials not configured. Using mock link.');
+      return `https://contractktor.com.br/sign/demo/${contractData.brandId}`;
+    }
+
+    // Chamada real para API Contractktor (quando integração estiver pronta)
+    const response = await fetch('https://api.contractktor.com.br/v1/contracts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${contractktorApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        type: 'carandai25_participation',
+        signers: [
+          {
+            email: contractData.email,
+            name: contractData.brandName,
+            role: 'CONTRATANTE'
+          }
+        ],
+        metadata: {
+          brandId: contractData.brandId,
+          segment: contractData.segment,
+          value: contractData.contractValue
+        },
+        redirectUrl: `https://portal.carandai25.com/contract/status/${contractData.brandId}`
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Contractktor API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.signUrl; // URL de assinatura digital
+
+  } catch (error) {
+    console.error('Error generating Contractktor link:', error);
+    throw error;
+  }
+}
+
+/**
+ * Preparar template do email com contrato
+ */
+async function prepareContractEmail(contractData, contractktorLink) {
+  try {
+    const template = await readFile('./email-templates/contract-send.html', 'utf8');
+
+    // Mapear dados do contrato para o template
+    let html = template
+      .replace(/{{BRAND_NAME}}/g, contractData.brandName || 'Marca')
+      .replace(/{{BRAND_CNPJ}}/g, contractData.cnpj || '00.000.000/0000-00')
+      .replace(/{{SEGMENT}}/g, contractData.segment || 'Diversos')
+      .replace(/{{CONTRACT_VALUE}}/g, contractData.contractValue)
+      .replace(/{{CONTRACTKTOR_LINK}}/g, contractktorLink)
+      .replace(/{{FURNITURE_DESCRIPTION}}/g, describeFurniture(contractData.furniture))
+      .replace(/{{PAYMENT_PLAN}}/g, describePaymentPlan(contractData.contractValue));
+
+    return html;
+
+  } catch (error) {
+    console.error('Error preparing contract email:', error);
+    throw error;
+  }
+}
+
+/**
+ * Endpoint: GET /api/contract/:brandId/status
+ * Descrição: Verificar status da assinatura do contrato
+ */
+async function getContractStatus(req, res) {
+  try {
+    const { brandId } = req.params;
+
+    const contract = await db.get(`
+      SELECT * FROM contracts WHERE brand_id = ? ORDER BY created_at DESC LIMIT 1
+    `, [brandId]);
+
+    if (!contract) {
+      return json(res, 404, { error: 'Contract not found' });
+    }
+
+    return json(res, 200, {
+      ok: true,
+      contractId: contract.id,
+      status: contract.status, // pending_signature, signed, rejected
+      sentAt: contract.sent_at,
+      signedAt: contract.signed_at,
+      documentUrl: contract.document_url,
+      message: getStatusMessage(contract.status)
+    });
+
+  } catch (error) {
+    console.error('Error getting contract status:', error);
+    return json(res, 500, { error: error.message });
+  }
+}
+
+/**
+ * Webhook: POST /api/contract/webhook/contractktor
+ * Descrição: Recebe notificação do Contractktor quando contrato é assinado
+ */
+async function contractktorWebhook(req, res) {
+  try {
+    const { contractId, status, signatures, documentUrl, signedAt } = req.body;
+
+    // Validar webhook (verificar signature se disponível)
+    if (!verifyContractktorSignature(req)) {
+      return json(res, 401, { error: 'Invalid webhook signature' });
+    }
+
+    // Atualizar status do contrato
+    await db.run(`
+      UPDATE contracts 
+      SET status = ?, signed_at = ?, document_url = ?, signatures = ?
+      WHERE brand_id = ?
+    `, [status, signedAt, documentUrl, JSON.stringify(signatures), contractId]);
+
+    console.log(`✅ Contract ${contractId} webhook received: ${status}`);
+
+    // Se contrato foi assinado com sucesso
+    if (status === 'signed') {
+      await onContractSigned(contractId);
+    }
+
+    return json(res, 200, { ok: true, message: 'Webhook received' });
+
+  } catch (error) {
+    console.error('Error processing Contractktor webhook:', error);
+    return json(res, 500, { error: error.message });
+  }
+}
+
+/**
+ * Callback: Executar quando contrato é assinado
+ */
+async function onContractSigned(brandId) {
+  try {
+    // 1. Buscar dados do contrato
+    const contract = await db.get('SELECT * FROM contracts WHERE brand_id = ?', [brandId]);
+
+    // 2. Enviar email de confirmação
+    await sendEmail({
+      to: contract.email,
+      subject: '✅ Contrato Assinado - Carandaí 25',
+      html: await prepareContractSignedEmail(contract),
+      from: 'carandai25comercial@gmail.com'
+    });
+
+    // 3. Enviar email interno (comercial + financeiro)
+    await sendEmail({
+      to: 'carandai25comercial@gmail.com,financeiro2@carandai25.com',
+      cc: 'ops@carandai25.com',
+      subject: `📋 Contrato Assinado: ${contract.brand_name}`,
+      html: `
+        <h3>Novo Contrato Assinado</h3>
+        <p><strong>Marca:</strong> ${contract.brand_name}</p>
+        <p><strong>Email:</strong> ${contract.email}</p>
+        <p><strong>Segmento:</strong> ${contract.segment}</p>
+        <p><strong>Valor:</strong> R$ ${contract.value}</p>
+        <p><strong>Assinado em:</strong> ${contract.signed_at}</p>
+        <p><a href="https://portal.carandai25.com/contract/${brandId}">Ver no Portal</a></p>
+      `,
+      from: 'carandai25comercial@gmail.com'
+    });
+
+    // 4. Atualizar status no portal (dashboard da marca)
+    console.log(`✅ Notifications sent for signed contract: ${brandId}`);
+
+  } catch (error) {
+    console.error('Error on contract signed:', error);
+  }
+}
+
+/**
+ * Template: Email de confirmação de contrato assinado
+ */
+async function prepareContractSignedEmail(contract) {
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>Contrato Assinado - Carandaí 25</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #16704e 0%, #0d4a2d 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 28px; margin-bottom: 5px; }
+        .content { padding: 20px; background: #f9f9f9; }
+        .success-box { background: #d4edda; border-left: 4px solid #16704e; padding: 15px; margin: 15px 0; }
+        .next-steps { background: white; padding: 15px; margin: 15px 0; border-radius: 6px; }
+        .btn { display: inline-block; padding: 12px 24px; background: #f0642d; color: white; text-decoration: none; border-radius: 4px; margin: 10px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>✅ Contrato Assinado com Sucesso!</h1>
+        </div>
+        <div class="content">
+          <p>Olá <strong>${contract.brand_name}</strong>,</p>
+          
+          <div class="success-box">
+            <strong>🎉 Seu contrato foi assinado digitalmente com sucesso!</strong><br>
+            Agora você pode prosseguir com os próximos passos para sua participação no Carandaí 25.
+          </div>
+
+          <div class="next-steps">
+            <h3>📋 Próximas Etapas:</h3>
+            <ol>
+              <li><strong>Efetuar Pagamento</strong> - Você receberá boleto/PIX em breve</li>
+              <li><strong>Enviar Documentação Fiscal</strong> - Prazo: 25/10/2026</li>
+              <li><strong>Confirmar Montagem</strong> - 04/11/2026</li>
+              <li><strong>Participar do Evento</strong> - 05-08/11/2026</li>
+            </ol>
+          </div>
+
+          <p>Acesse seu portal para mais informações:</p>
+          <a href="https://portal.carandai25.com" class="btn">Acessar Portal da Marca</a>
+
+          <p style="margin-top: 30px; font-size: 12px; color: #666;">
+            <strong>Dúvidas?</strong> Entre em contato: carandai25comercial@gmail.com
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * Helper: Descrever mobiliário conforme segmento
+ */
+function describeFurniture(furniture) {
+  const furnitureMap = {
+    'moda': 'Arara 1,80m x 1,74m + 1 cadeira',
+    'acessorio': 'Mesa 1,60m x 0,80m + 1 cadeira',
+    'bolsa-sapato': 'Estante 1,80m x 1,74m (5 prateleiras) + 1 cadeira',
+    'bem-estar-decor': 'Estante 2,40m x 1,50m (6 prateleiras) + Aparador 1,60m x 0,40m + 1 cadeira',
+    'alimentacao': 'Food Truck (regras operacionais especiais)'
+  };
+
+  return furnitureMap[furniture] || 'Mobiliário conforme segmento';
+}
+
+/**
+ * Helper: Descrever plano de pagamento
+ */
+function describePaymentPlan(value) {
+  const total = parseFloat(value.replace('R$ ', '').replace(',', '.'));
+  const installment = (total / 3).toFixed(2);
+
+  return `
+    <ul style="margin-left: 20px;">
+      <li>1ª parcela: R$ ${installment} - Vencimento: 30/08/2026</li>
+      <li>2ª parcela: R$ ${installment} - Vencimento: 15/10/2026</li>
+      <li>3ª parcela: R$ ${installment} - Vencimento: A confirmar</li>
+    </ul>
+    Forma de pagamento: Boleto Bancário ou PIX
+  `;
+}
+
+/**
+ * Helper: Mensagem de status
+ */
+function getStatusMessage(status) {
+  const messages = {
+    'pending_signature': '⏳ Aguardando sua assinatura digital no Contractktor',
+    'signed': '✅ Contrato assinado com sucesso!',
+    'rejected': '❌ Assinatura rejeitada. Entre em contato conosco.',
+    'expired': '⏰ Link de assinatura expirado. Solicite um novo.'
+  };
+  return messages[status] || 'Status desconhecido';
+}
+
+/**
+ * Helper: Formatar dinheiro
+ */
+function formatMoney(value) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(value);
+}
+
+/**
+ * Helper: Verificar assinatura do webhook
+ */
+function verifyContractktorSignature(req) {
+  // TODO: Implementar verificação de assinatura HMAC
+  // Usar header X-Contractktor-Signature
+  return true; // Por enquanto, aceitar todos
+}
+
+/**
+ * Helper: Ler arquivo
+ */
+function readFile(path, encoding) {
+  return new Promise((resolve, reject) => {
+    fs.readFile(path, encoding, (err, data) => {
+      if (err) reject(err);
+      else resolve(data);
+    });
+  });
+}
+
+// ============================================================================
+// INTEGRAÇÃO NO BANCO DE DADOS (SQLite)
+// ============================================================================
+
+// SQL para criar tabela de contratos
+const CREATE_CONTRACTS_TABLE = `
+CREATE TABLE IF NOT EXISTS contracts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand_id TEXT UNIQUE NOT NULL,
+  email TEXT NOT NULL,
+  brand_name TEXT NOT NULL,
+  cnpj TEXT,
+  segment TEXT,
+  value TEXT,
+  furniture TEXT,
+  contractktor_link TEXT,
+  status TEXT DEFAULT 'pending_signature',
+  signatures TEXT,
+  document_url TEXT,
+  sent_at DATETIME,
+  signed_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+`;
+
+// Executar ao inicializar o servidor
+db.run(CREATE_CONTRACTS_TABLE);
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
+
+module.exports = {
+  sendContractToSign,
+  getContractStatus,
+  contractktorWebhook,
+  onContractSigned
+};
+
