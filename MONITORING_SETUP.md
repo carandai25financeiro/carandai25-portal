@@ -1,294 +1,396 @@
-# 📊 Monitoring & Observability Setup - Carandaí 25 Portal v4.4.0
+# 📊 Carandaí 25 - Plano de Monitoramento & Performance
 
-## 🔍 Métricas de Produção
+## 🎯 Objetivos de Monitoramento
 
-### 1. Performance Monitoring
+```
+┌─────────────────────────────────────────────────────────┐
+│  Performance Monitoring Strategy - v4.4.0               │
+├─────────────────────────────────────────────────────────┤
+│  ✓ Uptime/Availability (99.9% SLA)                      │
+│  ✓ Response Time (p50, p95, p99)                        │
+│  ✓ Error Rate (< 0.1%)                                  │
+│  ✓ Cache Hit Rate (> 85%)                               │
+│  ✓ Resource Usage (CPU, Memory)                         │
+│  ✓ User Experience (Lighthouse Scores)                  │
+└─────────────────────────────────────────────────────────┘
+```
 
-#### Google Lighthouse Scores (Alvo: 90+)
+## 📈 Métricas Principais
+
+### 1. Disponibilidade & Uptime
+
+**Target**: 99.9% (43.2 minutos/mês downtime máximo)
+
+**Onde Monitorar:**
+- Railway Dashboard (deployment health)
+- HTTP status codes (via logs)
+- Service health endpoint: `/api/health`
+
+**Check Script:**
 ```bash
-# Executar localmente
-lighthouse https://portal.carandai25.com --view
+# Executar a cada 5 minutos
+curl -s https://portal.carandai25.com/api/health | jq '.ok'
 ```
 
-**Métricas Principais:**
-- Performance: 90+
-- Accessibility: 95+
-- Best Practices: 95+
-- SEO: 100
-- PWA: Installable
-
-#### Core Web Vitals
-| Métrica | Bom | Precisa Melhorar | Crítico |
-|---------|-----|-----------------|---------|
-| LCP (Largest Contentful Paint) | < 2.5s | < 4s | > 4s |
-| FID (First Input Delay) | < 100ms | < 300ms | > 300ms |
-| CLS (Cumulative Layout Shift) | < 0.1 | < 0.25 | > 0.25 |
-
----
-
-### 2. Monitoramento em Tempo Real
-
-#### Ferramentas Recomendadas:
-1. **Google Analytics 4** - Tráfego e comportamento do usuário
-2. **Sentry** - Error tracking e performance
-3. **Datadog** - APM (Application Performance Monitoring)
-4. **UptimeRobot** - Uptime monitoring (status 200)
-
-#### Métricas Key:
-```
-Daily Active Users (DAU)
-Monthly Active Users (MAU)
-Session Duration (média)
-Error Rate (%)
-API Latency (p50, p95, p99)
-Page Load Time (p50, p95)
-Cache Hit Rate (%)
-```
-
----
-
-### 3. Alertas Automáticos
-
-#### Críticos (Alerta Imediato)
-- ❌ Service Down (status != 200 por > 2 min)
-- ❌ Error Rate > 5%
-- ❌ API Latency p95 > 1000ms
-- ❌ JavaScript console errors > 10 por min
-- ❌ Memory usage > 200MB (mobile)
-
-#### Avisos (Alert em 15 min)
-- ⚠️ API Latency p95 > 500ms
-- ⚠️ Load time > 4s
-- ⚠️ Error Rate > 2%
-- ⚠️ Cache hit rate < 70%
-
----
-
-## 📱 User Feedback Collection
-
-### Sistema de Feedback Integrado
-
-#### 1. Feedback Form (Modal)
-```javascript
-Localização: Sidebar → "Feedback"
-Campos:
-  - Email (auto-filled)
-  - Nome da Marca
-  - Tipo: Bug / Feature Request / Outro
-  - Rating: ⭐ 1-5
-  - Mensagem: textarea
-  - Anexar screenshot: opcional
-```
-
-#### 2. Armazenamento
-```javascript
-Database: SQLite
-Table: feedback
-Campos:
-  - id: UUID
-  - brand_id: FK
-  - email: string
-  - rating: 1-5
-  - type: enum (bug, feature, other)
-  - message: text
-  - screenshot: file (optional)
-  - browser: string (auto)
-  - os: string (auto)
-  - app_version: string (auto)
-  - created_at: timestamp
-  - status: "new" (default)
-```
-
-#### 3. Notificações
-- Email automatizado para tim quando feedback recebido
-- Dashboard admin para gerenciar feedbacks
-- Categorização automática por tipo
-
----
-
-## 🔧 Implementação de Feedback (Code)
-
-### Backend Addition (server.js)
-```javascript
-// Adicionar após rotas existentes
-app.post('/api/feedback', async (req, res) => {
-  const body = await readJson(req);
-  const { brand_id, email, rating, type, message, screenshot } = body;
-  
-  // Validar campos
-  if (!email || !message || !rating) {
-    return json(res, 400, { error: 'Campos obrigatórios' });
-  }
-  
-  // Detectar browser/OS
-  const ua = req.headers['user-agent'];
-  const browserOS = detectBrowserOS(ua);
-  
-  // Salvar no DB
-  db.prepare(`
-    INSERT INTO feedback(id, brand_id, email, rating, type, message, browser, os, app_version, created_at, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, '4.4.0', datetime('now'), 'new')
-  `).run(uid(), brand_id, email, rating, type || 'other', message, browserOS.browser, browserOS.os);
-  
-  // Email notification
-  sendEmailNotification(email, message, rating);
-  
-  return json(res, 201, { ok: true });
-});
-```
-
-### Frontend Addition (app.js)
-```javascript
-function viewFeedback() {
-  openModal(`
-    <div class="modal-head">
-      <div><span class="kicker">FEEDBACK</span><h2>Sua opinião importa</h2></div>
-      <button class="modal-close">×</button>
-    </div>
-    <form id="feedbackForm" class="form-grid">
-      <div class="field full">
-        <label>Email<input type="email" name="email" value="${state.me.email}" required></label>
-      </div>
-      <div class="field">
-        <label>Rating
-          <div class="rating-stars">
-            ${[1,2,3,4,5].map(i => `<button type="button" class="star" data-rating="${i}">⭐</button>`).join('')}
-          </div>
-        </label>
-      </div>
-      <div class="field">
-        <label>Tipo
-          <select name="type" required>
-            <option value="bug">🐛 Bug Report</option>
-            <option value="feature">✨ Feature Request</option>
-            <option value="other">💬 Outro</option>
-          </select>
-        </label>
-      </div>
-      <div class="field full">
-        <label>Mensagem<textarea name="message" required></textarea></label>
-      </div>
-      <div class="field full">
-        <button class="btn btn-dark" type="submit">Enviar Feedback</button>
-      </div>
-    </form>
-  `);
-  
-  $('#feedbackForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      const data = new FormData(e.target);
-      await api('/api/feedback', {
-        method: 'POST',
-        body: Object.fromEntries(data)
-      });
-      closeModal();
-      toast('Obrigado pelo feedback! 🙏');
-    } catch (err) {
-      showError(err);
-    }
-  });
+**Expected Response:**
+```json
+{
+  "ok": true,
+  "service": "carandai25-portal",
+  "version": "4.4.0",
+  "storage": "/storage"
 }
 ```
 
 ---
 
-## 📊 Admin Dashboard para Feedback
+### 2. Tempo de Resposta (Latência)
 
-### Funcionalidades
-- [ ] Lista de todos os feedbacks
-- [ ] Filtrar por: tipo, rating, data, brand
-- [ ] Buscar por email/mensagem
-- [ ] Marcar como "Resolvido"
-- [ ] Responder diretamente ao email
-- [ ] Gráficos de rating over time
-- [ ] Heatmap de tipos de feedback
+**Targets:**
+```
+Métrica           | p50   | p75   | p95   | p99
+-----------------|-------|-------|-------|-------
+Login Page        | 0.8s  | 1.2s  | 1.8s  | 2.2s
+Dashboard         | 1.5s  | 2.1s  | 2.9s  | 3.5s
+Estrutura (img)   | 0.7s  | 1.1s  | 1.6s  | 2.0s
+Documentos        | 1.3s  | 1.8s  | 2.5s  | 3.0s
+Boletos           | 1.2s  | 1.7s  | 2.4s  | 2.8s
+```
+
+**Como Medir (Chrome DevTools):**
+1. Abrir DevTools (F12)
+2. Ir para Network tab
+3. Fazer ação no site
+4. Ver coluna "Time" para cada requisição
+5. Calcular p95: 95% das requisições devem estar < X tempo
+
+**Script de Teste Automatizado:**
+```javascript
+// Rodar no Console
+async function testLatency() {
+  const results = [];
+  for (let i = 0; i < 5; i++) {
+    const start = performance.now();
+    await fetch('/api/dashboard');
+    results.push(performance.now() - start);
+  }
+  console.log('Latencies (ms):', results);
+  console.log('Avg:', (results.reduce((a,b)=>a+b)/results.length).toFixed(0) + 'ms');
+}
+testLatency();
+```
 
 ---
 
-## 🧪 Testing Automation
+### 3. Taxa de Cache
 
-### Performance Testing (Playwright)
+**Target**: > 85% hit rate
+
+**Onde Verificar (Chrome DevTools Network Tab):**
+1. Abrir DevTools → Network
+2. Recarregar página (Ctrl+R ou Cmd+R)
+3. Procurar por Status "304 Not Modified" ou "(from cache)"
+4. Calcular: (cached requests / total requests) × 100
+
+**Expected Cache Headers:**
+```
+Resource Type | Cache-Control | Expected
+--------------|---------------|----------------------
+Images (PNG)  | max-age=86400 | 24 horas
+CSS/JS        | max-age=3600  | 1 hora
+HTML          | no-cache      | Always fresh
+API           | no-store      | Nunca cache
+```
+
+**Script para Verificar Headers:**
 ```javascript
-// tests/performance.spec.js
-test('Login page loads in < 2 seconds', async ({ browser }) => {
-  const page = await browser.newPage();
-  const start = Date.now();
-  await page.goto('https://portal.carandai25.com');
-  const time = Date.now() - start;
-  expect(time).toBeLessThan(2000);
+// No Console
+fetch('/public/assets/estruturas/estrutura-moda.png')
+  .then(r => {
+    console.log('Cache-Control:', r.headers.get('Cache-Control'));
+    console.log('Expires:', r.headers.get('Expires'));
+    console.log('Age:', r.headers.get('Age'));
+  });
+```
+
+---
+
+### 4. Pontuação Lighthouse
+
+**Targets:**
+```
+Métrica         | Target | Status
+----------------|--------|--------
+Performance     | > 80   | 🟢 GOOD
+Accessibility   | > 90   | 🟢 GOOD
+Best Practices  | > 85   | 🟢 GOOD
+SEO            | > 90   | 🟢 GOOD
+PWA            | > 90   | 🟢 GOOD
+```
+
+**Como Executar Lighthouse:**
+
+1. **Chrome DevTools (Built-in):**
+   - DevTools → Lighthouse tab
+   - Selecionar mobile ou desktop
+   - Clicar "Analyze page load"
+   - Aguardar resultado
+
+2. **PageSpeed Insights (Online):**
+   - Ir para https://pagespeed.web.dev
+   - Inserir URL: https://portal.carandai25.com
+   - Analisar scores
+
+3. **Command Line (npm):**
+   ```bash
+   npm install -g lighthouse
+   lighthouse https://portal.carandai25.com --view
+   ```
+
+---
+
+### 5. Taxa de Erro HTTP
+
+**Target**: < 0.1% (máx 1 erro por 1000 requisições)
+
+**Status Codes a Monitorar:**
+```
+Status | Significado | Action
+-------|-------------|-------
+200    | OK         | Normal
+301    | Redirect   | Normal
+304    | Cached     | Normal
+400    | Bad Request| Verificar logs
+401    | Unauthorized| Login issue
+404    | Not Found  | Missing resource
+500    | Server Error| Critical
+503    | Unavailable| Critical
+```
+
+**Como Monitorar (Railway Dashboard):**
+1. Ir para Logs → HTTP Logs
+2. Filtrar por: `@httpStatus:500` ou `@httpStatus:400`
+3. Análise: % de erro = (erros / total) × 100
+
+---
+
+### 6. Uso de Recursos (CPU, Memória)
+
+**Targets (por replica):**
+```
+Recurso      | Média | Pico  | Alerta
+-------------|-------|-------|-------
+CPU (%)      | 20-30 | < 70  | > 80%
+Memória (MB) | 150   | < 400 | > 500MB
+Disco (MB)   | 200   | < 500 | > 600MB
+```
+
+**Onde Ver (Railway Dashboard):**
+1. Projeto → Environment
+2. Selecionar serviço "carandai25-portal"
+3. Ir para "Metrics"
+4. Ver CPU Usage e Memory Usage
+
+---
+
+## 🔍 Ferramentas de Monitoramento Recomendadas
+
+### Free Tier Options
+
+#### 1. **Google Analytics 4**
+```javascript
+// Adicionar ao HEAD do index.html
+<script async src="https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'GA_MEASUREMENT_ID');
+</script>
+```
+
+**Métricas Rastreadas:**
+- Page views
+- User sessions
+- Device types
+- Browser versions
+- Performance metrics
+
+#### 2. **Sentry (Free Tier)**
+```javascript
+// Adicionar ao public/app.js
+import * as Sentry from "@sentry/browser";
+
+Sentry.init({
+  dsn: "https://YOUR_DSN@sentry.io/PROJECT_ID",
+  environment: "production",
+  tracesSampleRate: 0.1,
+});
+
+// Capture errors
+window.addEventListener('error', (e) => {
+  Sentry.captureException(e);
 });
 ```
 
-### Cross-Browser Testing
-```bash
-# BrowserStack / LambdaTest
-- Android Chrome 8.0+ emulator
-- iOS Safari 12.0+ simulator
-- Windows 10 Edge/Chrome/Firefox
-- macOS 10.13+ Safari/Chrome
-- Ubuntu Firefox/Chrome
+**Benefícios:**
+- Real-time error tracking
+- Stack traces
+- User context
+- Performance monitoring
+
+#### 3. **Uptime Monitor (Uptime Robot - Free)**
+- Monitorar `/api/health` a cada 5 minutos
+- Alertas via email se inativo
+- Dashboard de histórico
+- Relatório mensal
+
+---
+
+## 📊 Dashboard de Monitoramento (Recomendado)
+
+Criar página interna em `/admin/monitoring`:
+
+```html
+<!-- Exemplo de Dashboard -->
+<div class="monitoring-board">
+  
+  <div class="kpi">
+    <h3>Uptime (30 dias)</h3>
+    <span class="value">99.98%</span>
+    <span class="status">✅ GOOD</span>
+  </div>
+
+  <div class="kpi">
+    <h3>Avg Response Time</h3>
+    <span class="value">1.2s</span>
+    <span class="status">✅ GOOD</span>
+  </div>
+
+  <div class="kpi">
+    <h3>Cache Hit Rate</h3>
+    <span class="value">87.3%</span>
+    <span class="status">✅ GOOD</span>
+  </div>
+
+  <div class="kpi">
+    <h3>Error Rate</h3>
+    <span class="value">0.05%</span>
+    <span class="status">✅ GOOD</span>
+  </div>
+
+  <div class="chart">
+    <h4>Response Time (24h)</h4>
+    [Gráfico de linha mostrando p50, p95, p99]
+  </div>
+
+  <div class="chart">
+    <h4>HTTP Status Distribution</h4>
+    [Gráfico de pizza: 2xx, 3xx, 4xx, 5xx]
+  </div>
+
+</div>
 ```
 
 ---
 
-## 📈 Dashboards Recomendados
+## 🚨 Alertas & Escalação
 
-### 1. Executive Dashboard (C-Level)
-```
-Top KPIs:
-- DAU / MAU
-- Uptime %
-- Error Rate
-- User Satisfaction (avg rating)
-- Features Requested (top 5)
-```
+### Regras de Alerta
 
-### 2. Operations Dashboard
 ```
-Real-time:
-- Active Sessions
-- Errors/minute
-- API latency
-- Cache hit rate
-- Server CPU/Memory
+Condição                  | Severidade | Action
+--------------------------|-----------|------------------
+Uptime < 99.9%           | CRITICAL   | Page on-call 24/7
+Avg Response > 3s        | HIGH       | Investigate immediately
+Error Rate > 0.5%        | HIGH       | Check logs
+Cache Hit < 70%          | MEDIUM     | Review cache config
+Memory > 500MB           | MEDIUM     | Check for leaks
+CPU > 80%                | MEDIUM     | Scale up replicas
 ```
 
-### 3. Product Dashboard
+### Contatos & SLAs
+
 ```
-Trends:
-- Feedback by type (bug vs feature)
-- User journey funnels
-- Feature adoption
-- Churn rate
-- Session duration
+Severidade | Response | Resolution | Contact
+-----------|----------|------------|------------------
+CRITICAL   | 15 min   | 1 hour     | On-call dev + PM
+HIGH       | 1 hour   | 4 hours    | Dev team lead
+MEDIUM     | 4 hours  | 24 hours   | Dev team
+LOW        | 24 hours | 72 hours   | Backlog
 ```
 
 ---
 
-## 🔔 Notification Channels
+## 📝 Checklist de Monitoramento
 
-### Channels Configurados
-1. **Email** - Para feedback, bugs críticos
-2. **Slack** - Alerts em #c25-portal-alerts
-3. **SMS** - Apenas P0 (service down)
-4. **In-App** - Toast notifications para erros
+### Setup Inicial
+- [ ] Health endpoint configurado (`/api/health`)
+- [ ] Google Analytics implementado
+- [ ] Sentry configurado (error tracking)
+- [ ] Uptime Robot monitorando
+- [ ] Railway Metrics habilitadas
+- [ ] Logs HTTP habilitados
+- [ ] Cache headers corretos
+
+### Monitoramento Diário
+- [ ] Verificar uptime (99.9%+)
+- [ ] Verificar erros no Sentry
+- [ ] Revisar response times (< 3s)
+- [ ] Checar cache hit rate (> 85%)
+
+### Monitoramento Semanal
+- [ ] Rodas Lighthouse (todos os scores > 80)
+- [ ] Análise de performance trends
+- [ ] Revisar feedback de usuários
+- [ ] Check resource usage peaks
+
+### Monitoramento Mensal
+- [ ] Gerar relatório de SLOs
+- [ ] Otimizações baseadas em dados
+- [ ] Planejar melhorias
+- [ ] Reunião de retrospectiva
 
 ---
 
-## 📋 Checklist de Monitoramento
+## 📊 Relatório de Performance (Template)
 
-- [ ] Google Analytics configurado
-- [ ] Sentry account criado
-- [ ] UptimeRobot health checks ativos
-- [ ] Lighthouse CI pipeline
-- [ ] Performance budget definido
-- [ ] Alertas configurados no Slack
-- [ ] Email notifications ativas
-- [ ] Dashboard admin criado
-- [ ] Logs centralizados (CloudWatch/ELK)
-- [ ] Error tracking com stack traces
+```markdown
+# Performance Report - Setembro 2026
+
+## KPIs
+
+| Métrica | Target | Atual | Status |
+|---------|--------|-------|--------|
+| Uptime | 99.9% | 99.98% | ✅ |
+| Avg Response | 1.5s | 1.2s | ✅ |
+| Cache Hit | > 85% | 87.3% | ✅ |
+| Error Rate | < 0.1% | 0.05% | ✅ |
+| Lighthouse | > 80 | 92 | ✅ |
+
+## Top 3 Achievements
+1. Cache optimization → 87.3% hit rate
+2. Image compression → 40% faster loads
+3. Zero critical errors this month
+
+## Top 3 Issues
+1. Occasional 500 errors on /api/dashboard (0.02%)
+2. Slow image loads on poor connection
+3. PWA offline sync delay
+
+## Recommendations
+1. Add database query optimization
+2. Implement CDN for images
+3. Monitor on slower connections
+```
 
 ---
 
-**Configuração Completa = Base Sólida para Manutenção Contínua**
+## 🎯 Next Steps
+
+1. **Week 1**: Configurar ferramentas básicas (GA4, Sentry)
+2. **Week 2**: Setup dashboards e alertas
+3. **Week 3**: Baseline de performance
+4. **Week 4**: Otimizações baseadas em dados
+
+

@@ -1,319 +1,357 @@
-# 🧪 Checklist de Testes Carandaí 25 Portal v4.4.0
+# 🧪 Carandaí 25 v4.4.0 - Plano de Testes Completo
 
-## 📱 Testes por Plataforma
+## 📋 Checklist de Testes por Plataforma
 
-### 1️⃣ Android (Chrome, Firefox, Samsung Internet)
-**Dispositivo de Teste:** Samsung Galaxy / Pixel / Emulador
-**Versão Mínima:** Android 8.0
+### 🤖 ANDROID (8.0+)
+**Navegador: Chrome**
+- [ ] **Login Test**
+  - [ ] Acesso ao portal
+  - [ ] Login com email/senha corretos
+  - [ ] Transição suave para dashboard (sem travamento)
+  - [ ] Logout funciona
+  
+- [ ] **Navegação**
+  - [ ] Menu sidebar abre/fecha
+  - [ ] Clique em cada seção (Início, Evento, Contrato, Boletos, Estrutura, etc)
+  - [ ] Carregamento de conteúdo
+  
+- [ ] **Imagens & Performance**
+  - [ ] Imagens de estrutura carregam
+  - [ ] Estrutura completa visível (650px max-height)
+  - [ ] Sem corte de imagem
+  - [ ] Tempo de carregamento < 3s
+  
+- [ ] **PWA Installation**
+  - [ ] Chrome Menu → "Instalar app"
+  - [ ] App instalado no home screen
+  - [ ] Abrindo app, aparece interface standalone
+  - [ ] App tem ícone correto (512px)
+  
+- [ ] **Responsividade**
+  - [ ] Teste em retrato (portrait)
+  - [ ] Teste em paisagem (landscape)
+  - [ ] Botões com tamanho acessível (mín 44px)
+  - [ ] Texto legível (mín 12sp)
 
-#### Login & Autenticação
-- [ ] Página de login carrega sem erros
-- [ ] Login com email/senha funciona
-- [ ] Após login, página transiciona para dashboard (sem travamento)
-- [ ] Logout funciona corretamente
-- [ ] Session persiste após refresh
+**Navegador: Firefox**
+- [ ] Repetir testes principais acima
 
-#### PWA Installation
-- [ ] Chrome: Menu → "Instalar app" funciona
-- [ ] Firefox: Consegue adicionar à home screen
-- [ ] Samsung Internet: Opção de instalação aparece
-- [ ] Ícone aparece na home screen com nome correto
-- [ ] App abre em modo fullscreen standalone
-
-#### Performance
-- [ ] Login page carrega em < 2 segundos
-- [ ] Dashboard carrega em < 3 segundos
-- [ ] Imagens de estrutura aparecem sem delay
-- [ ] Scroll é suave (60fps)
-- [ ] Não há memory leaks ao navegar
-
-#### Offline Functionality
-- [ ] App funciona com internet desligada (páginas já visitadas)
-- [ ] Mensagem clara quando offline
-- [ ] Sincroniza quando voltar online
-- [ ] Cache de 24h para imagens está funcionando
-
----
-
-### 2️⃣ iOS (Safari, Chrome)
-**Dispositivo de Teste:** iPhone / iPad (iOS 12+)
-
-#### Login & Autenticação
-- [ ] Página de login carrega sem erros
-- [ ] Login com email/senha funciona
-- [ ] Após login, página transiciona para dashboard (sem travamento)
-- [ ] Teclado não interfere com layout
-- [ ] Logout funciona corretamente
-
-#### PWA Installation
-- [ ] Safari: Share → "Adicionar à Tela de Início" funciona
-- [ ] Chrome para iOS: Menu → "Install app" funciona
-- [ ] App abre com splash screen personalizado
-- [ ] Ícone de 192x192px aparece correto
-- [ ] Status bar é dark-translucent conforme esperado
-
-#### Performance
-- [ ] Login page carrega em < 2 segundos
-- [ ] Dashboard carrega em < 3 segundos
-- [ ] Imagens aparecem sem delay significativo
-- [ ] Scroll é suave
-- [ ] Battery drain normal (não excessivo)
-
-#### Offline Functionality
-- [ ] App funciona offline (cached)
-- [ ] Service Worker instalado
-- [ ] Sync automático quando voltar online
-- [ ] Cache headers respeitados (24h para images)
+**Navegador: Samsung Internet**
+- [ ] Repetir testes principais acima
 
 ---
 
-### 3️⃣ Windows (Edge, Chrome, Firefox)
-**Dispositivo de Teste:** Windows 10/11 Desktop/Laptop
+### 🍎 iOS (12.0+)
+**Navegador: Safari (recomendado)**
+- [ ] **Login Test**
+  - [ ] Acesso ao portal
+  - [ ] Login funciona
+  - [ ] Transição para dashboard
+  - [ ] Logout funciona
+  
+- [ ] **Navegação**
+  - [ ] Sidebar abre/fecha via menu toggle
+  - [ ] Todas as seções carregam
+  - [ ] Não há erros JavaScript
+  
+- [ ] **Imagens & Performance**
+  - [ ] Imagens de estrutura visíveis
+  - [ ] Tamanho otimizado (650px)
+  - [ ] Carregamento rápido
+  
+- [ ] **PWA Installation (Home Screen)**
+  - [ ] Safari Share Menu → "Add to Home Screen"
+  - [ ] Nome do app customizável
+  - [ ] App adiciona ao home screen
+  - [ ] Abrindo do home screen, vai para tela cheia
+  - [ ] Ícone apareça corretamente (192px)
+  
+- [ ] **Offline Functionality**
+  - [ ] Home screen app funciona offline
+  - [ ] Service Worker ativado
+  - [ ] Dados em cache disponíveis
+  
+- [ ] **Responsividade iPhone**
+  - [ ] Teste em iPhone SE (pequeno)
+  - [ ] Teste em iPhone Pro Max (grande)
+  - [ ] Layout não quebra em nenhum tamanho
+  - [ ] Notch/Dynamic Island não interfere
 
-#### Login & Autenticação
-- [ ] Página de login carrega sem erros
-- [ ] Login com email/senha funciona
-- [ ] Após login, página transiciona para dashboard
-- [ ] Keyboard shortcuts funcionam
-- [ ] Session persiste após fechar abas
-
-#### PWA Installation
-- [ ] Edge: Menu → "Instalar este site como um app" funciona
-- [ ] Chrome: Menu → "Install app" funciona
-- [ ] Firefox: "Install as app" funciona
-- [ ] App abre em janela separada
-- [ ] Tile do Windows criado com cor correta (#111111)
-- [ ] Start menu mostra ícone da app
-
-#### Performance
-- [ ] Login page carrega em < 1.5 segundos
-- [ ] Dashboard carrega em < 2 segundos
-- [ ] Estrutura images 650px renderizam suave
-- [ ] Crisp-edges rendering visível e nítido
-- [ ] CPU/RAM não espike (< 150MB)
-
-#### Offline Functionality
-- [ ] App funciona offline
-- [ ] Cache de 24h respeitado
-- [ ] Sync funciona quando voltar online
-- [ ] Dados persistem entre sessões
-
----
-
-### 4️⃣ macOS (Safari, Chrome, Firefox)
-**Dispositivo de Teste:** MacBook / iMac (macOS 10.13+)
-
-#### Login & Autenticação
-- [ ] Página de login carrega sem erros
-- [ ] Login com email/senha funciona
-- [ ] Após login, página transiciona para dashboard
-- [ ] Cmd+Q fecha app corretamente
-- [ ] Session persiste
-
-#### PWA Installation
-- [ ] Safari: File → "Add to Dock" funciona
-- [ ] Chrome: Menu → "Install app" funciona
-- [ ] Firefox: "Install as app" funciona
-- [ ] App abre com icon personalizado
-- [ ] Aparece no Dock e Applications
-
-#### Performance
-- [ ] Login page carrega em < 1.5 segundos
-- [ ] Dashboard carrega em < 2 segundos
-- [ ] Retina display: imagens nítidas
-- [ ] Crisp-edges rendering ótimo em alta resolução
-- [ ] Fan/processador não aquece excessivamente
-
-#### Offline Functionality
-- [ ] App funciona offline
-- [ ] Cache persiste entre sessões
-- [ ] Sync automático online
-- [ ] Dados seguros (HTTPS)
+**Navegador: Chrome for iOS**
+- [ ] Repetir testes principais
 
 ---
 
-### 5️⃣ Linux (Chrome, Firefox, Edge)
-**Dispositivo de Teste:** Ubuntu / Fedora / Debian
+### 💻 WINDOWS (10+)
+**Navegador: Microsoft Edge (recomendado)**
+- [ ] **Login Test**
+  - [ ] Acesso ao portal
+  - [ ] Login funciona
+  - [ ] Dashboard transiciona
+  
+- [ ] **App Installation**
+  - [ ] Edge Menu → "Install this site as an app"
+  - [ ] App instalado no Start Menu
+  - [ ] App cria shortcut no Desktop (opcional)
+  - [ ] Abrindo app, modo standalone
+  
+- [ ] **Performance**
+  - [ ] Não há lag na navegação
+  - [ ] Imagens carregam rápido
+  - [ ] Cache funciona (verificar no DevTools)
+  
+- [ ] **Offline Mode**
+  - [ ] Desabilitar internet
+  - [ ] App ainda acessa dados em cache
+  - [ ] Sincronização automática quando volta online
+  
+- [ ] **Integração Windows**
+  - [ ] Tile no Start Menu mostra
+  - [ ] Notificações funcionam (se configuradas)
+  - [ ] Tema dark/light respeita Windows settings
 
-#### Login & Autenticação
-- [ ] Página de login carrega sem erros
-- [ ] Login com email/senha funciona
-- [ ] Após login, página transiciona para dashboard
-- [ ] Logout funciona
-- [ ] Session persiste
+**Navegador: Google Chrome**
+- [ ] Repetir testes principais
+- [ ] Chrome Menu → "Install app"
 
-#### PWA Installation
-- [ ] Chrome: Menu → "Install app" funciona
-- [ ] Firefox: "Install as app" funciona
-- [ ] Edge: "Install app" funciona
-- [ ] App abre em janela separada
-- [ ] Ícone aparece em Application Menu
-
-#### Performance
-- [ ] Login page carrega em < 1.5 segundos
-- [ ] Dashboard carrega em < 2 segundos
-- [ ] Imagens renderizam sem delay
-- [ ] CPU usage normal (< 20%)
-- [ ] RAM não aumenta durante navegação
-
-#### Offline Functionality
-- [ ] App funciona offline
-- [ ] Cache headers respeitados
-- [ ] Sync funciona online
-- [ ] Dados persistem
+**Navegador: Firefox**
+- [ ] Repetir testes principais
 
 ---
 
-## 📊 Performance Monitoring
+### 🍎 macOS (10.13+)
+**Navegador: Safari (recomendado)**
+- [ ] **Login Test**
+  - [ ] Portal acessível
+  - [ ] Login funciona
+  
+- [ ] **App Installation (Dock)**
+  - [ ] Safari File → "Add to Dock" (ou similar)
+  - [ ] App adiciona ao Dock
+  - [ ] Clique no Dock abre app em modo standalone
+  
+- [ ] **Performance**
+  - [ ] Sem lag na navegação
+  - [ ] Imagens otimizadas
+  - [ ] Cache funciona
+  
+- [ ] **System Integration**
+  - [ ] Respeita tema do macOS (dark/light)
+  - [ ] Keyboard shortcuts funcionam
+  - [ ] Zoom com Cmd+
+
+**Navegador: Google Chrome**
+- [ ] Chrome Menu → "Install app"
+- [ ] Repetir testes
+
+**Navegador: Firefox**
+- [ ] Repetir testes principais
+
+---
+
+### 🐧 LINUX (qualquer distribuição)
+**Navegador: Google Chrome/Chromium**
+- [ ] **Login Test**
+  - [ ] Portal acessível
+  - [ ] Login e navegação funcionam
+  
+- [ ] **App Installation**
+  - [ ] Chrome Menu → "Install app"
+  - [ ] App instalado (verificar com `ls ~/.local/share/applications/`)
+  - [ ] Launcher criado
+  
+- [ ] **Performance**
+  - [ ] Carregamento rápido
+  - [ ] Cache funciona
+  
+- [ ] **CLI Compatibility**
+  - [ ] Testar com diferentes window managers (GNOME, KDE, etc)
+
+**Navegador: Firefox**
+- [ ] Repetir testes principais
+
+---
+
+## ⚡ Performance Testing
 
 ### Load Time Targets
-| Página | Alvo | Crítico |
-|--------|------|---------|
-| Login | < 2s | < 3s |
-| Dashboard | < 3s | < 4s |
-| Estrutura | < 2s | < 3s |
-| Documentos | < 2s | < 3s |
-| Boletos | < 2s | < 3s |
+```
+Métrica              | Target  | Tool
+--------------------|---------|------------------
+Page Load (DOMReady) | < 1.5s  | Chrome DevTools
+First Contentful    | < 2.0s  | Lighthouse
+Largest Paint       | < 2.5s  | Lighthouse
+Time to Interactive | < 3.0s  | Lighthouse
+Cache Hit Rate      | > 85%   | Network Tab
+```
 
-### Cache Validation
-- [ ] Images PNG/JPG: cache-control: public, max-age=86400
-- [ ] HTML/CSS/JS: cache-control: public, max-age=3600
-- [ ] API responses: cache-control: no-cache (ou apropriado)
-- [ ] Browser DevTools: Network tab mostra status 304 (Not Modified)
+### Performance Checklist
+- [ ] **Lighthouse Score**
+  - [ ] Performance: > 80
+  - [ ] Accessibility: > 90
+  - [ ] Best Practices: > 85
+  - [ ] SEO: > 90
+  - [ ] PWA: > 90
 
-### Network Performance
-- [ ] Latency p95 < 200ms
-- [ ] Throughput: > 1Mbps em 3G
-- [ ] Packet loss: 0%
-- [ ] First Contentful Paint (FCP): < 1.5s
-- [ ] Largest Contentful Paint (LCP): < 2.5s
+- [ ] **Network Analysis (Chrome DevTools)**
+  - [ ] Total requests: < 50
+  - [ ] Total size: < 2MB
+  - [ ] Image cache: 24h (86400s)
+  - [ ] CSS/JS cache: 1h (3600s)
+  - [ ] Gzip enabled: Yes
 
-### Resource Usage
-- [ ] Memory: < 150MB em desktop, < 100MB em mobile
-- [ ] CPU: < 30% em idle, < 60% durante navegação
-- [ ] Disk: < 50MB cache
-- [ ] Battery (mobile): < 5% drain por hora de uso
+- [ ] **Image Optimization**
+  - [ ] Structure images load < 2s
+  - [ ] Imagem completa visível (650px max)
+  - [ ] Crisp-edges rendering funciona
+  - [ ] Responsive em todos os tamanhos
 
----
-
-## 🔌 PWA Offline Testing
-
-### Service Worker
-- [ ] Service Worker instala sem erros
-- [ ] Service Worker ativa corretamente
-- [ ] Versão do SW está atualizada
-- [ ] Pode ser detectado em DevTools
-
-### Offline Pages
-- [ ] Home page disponível offline
-- [ ] Dashboard dados cached
-- [ ] Estrutura images aparecem offline
-- [ ] Documentos carregam offline
-- [ ] Mensagem "Offline" clara quando sem internet
-
-### Online Sync
-- [ ] Dados sync quando volta online
-- [ ] Notificação de sync bem-sucedido
-- [ ] Conflitos de dados resolvidos
-- [ ] Nenhum dado perdido
-
-### Cache Strategy
-- [ ] Network-first para API
-- [ ] Cache-first para images/assets
-- [ ] Stale-while-revalidate para conteúdo
-- [ ] TTL de 24h para images PNG/JPG
+### Performance Test Script (DevTools Console)
+```javascript
+// Executar no Console
+console.table({
+  'Dom Ready': performance.timing.domContentLoadedEventEnd - performance.timing.navigationStart,
+  'Page Load': performance.timing.loadEventEnd - performance.timing.navigationStart,
+  'Resources': performance.getEntriesByType('resource').length,
+  'Total Size (MB)': (performance.getEntriesByType('resource')
+    .reduce((sum, r) => sum + (r.transferSize || 0), 0) / 1024 / 1024).toFixed(2),
+  'Cache Hit Rate': Math.round((performance.getEntriesByType('resource')
+    .filter(r => r.transferSize === 0).length / 
+    performance.getEntriesByType('resource').length) * 100) + '%'
+});
+```
 
 ---
 
-## 👥 User Feedback Collection
+## 📱 PWA Validation Checklist
 
-### Feedback Form Checklist
-- [ ] Feedback button localizado em navegação
-- [ ] Modal abre sem erros
-- [ ] Campos: email, nome, segmento, mensagem
-- [ ] Validação de campos funciona
-- [ ] Envio de feedback funciona
-- [ ] Confirmação de envio aparece
-- [ ] Feedback salvo em banco de dados
+### Manifest.json Validation
+- [ ] ✅ `name`: "Carandaí 25 | Portal da Marca"
+- [ ] ✅ `short_name`: "C25 Marcas"
+- [ ] ✅ `description`: Presente e descritivo
+- [ ] ✅ `start_url`: "/" (raiz)
+- [ ] ✅ `display`: "standalone"
+- [ ] ✅ `background_color`: "#f3f0e9"
+- [ ] ✅ `theme_color`: "#111111"
+- [ ] ✅ `icons`: [192x192, 512x512]
+- [ ] ✅ `version`: "4.4.0"
 
-### Feedback Analytics
-- [ ] Rastrear cliques em "Feedback"
-- [ ] Contar total de feedbacks por dia/semana
-- [ ] Categorizar por tipo (bug, feature, etc)
-- [ ] Email notifications para tim ao receber feedback
-- [ ] Dashboard admin para visualizar feedbacks
+### Service Worker Validation
+- [ ] SW registrado (DevTools → Application → Service Workers)
+- [ ] SW ativado e rodando
+- [ ] Cache storage criado
+- [ ] Offline page funciona
+- [ ] Sincronização background (se config)
 
-### Rating System
-- [ ] Teste a estrela de rating (1-5)
-- [ ] Rating salva com feedback
-- [ ] Média de ratings calculada
-- [ ] Distribuição de ratings visível
+### Offline Functionality
+- [ ] Desabilitar internet
+- [ ] App carrega interface cached
+- [ ] Dados cached acessíveis
+- [ ] Mensagem "offline" se necessário
+- [ ] Reconectar internet
+- [ ] Sincronização automática dos dados
 
----
-
-## 🐛 Bug Report Integration
-
-### Bug Report Form
-- [ ] Campo para descrever bug
-- [ ] Screenshot attachment funciona
-- [ ] Browser/OS auto-detectado
-- [ ] Version app incluída
-- [ ] Timestamp incluído
-- [ ] Status: "Novo" by default
-
-### Bug Tracking
-- [ ] Bugs salvos no banco de dados
-- [ ] Email notification para tim dev
-- [ ] Admin dashboard mostra bugs abertos
-- [ ] Priorização possível (P0-P4)
-- [ ] Histórico de resolução
+### Installation Test (Each Platform)
+| Platform | Method | Expected Behavior |
+|----------|--------|-------------------|
+| Android | Menu → Install | Ícone home screen, modo standalone |
+| iOS | Share → Add to Home | Ícone Dock/Home, modo standalone |
+| Windows | Menu → Install | Start Menu, Taskbar, Desktop shortcut |
+| macOS | File → Add to Dock | Dock icon, modo standalone |
+| Linux | Menu → Install | App launcher, Start menu |
 
 ---
 
-## 📈 Metrics to Track
+## 🔐 Security Checklist
 
-### User Engagement
-- [ ] Daily Active Users (DAU)
-- [ ] Monthly Active Users (MAU)
-- [ ] Session duration (média)
-- [ ] Pages per session
-- [ ] Return user rate
-
-### Performance Metrics
-- [ ] Page load time (média)
-- [ ] Time to interactive (TTI)
-- [ ] First Input Delay (FID)
-- [ ] Cumulative Layout Shift (CLS)
-- [ ] Core Web Vitals score
-
-### Error Tracking
-- [ ] JavaScript errors (quantidade)
-- [ ] 404 errors
-- [ ] 5xx server errors
-- [ ] Network timeouts
-- [ ] Failed API calls
-
-### Conversion Metrics
-- [ ] Login success rate
-- [ ] Feature adoption (documentos upload, etc)
-- [ ] Churn rate
-- [ ] Feedback submission rate
+- [ ] HTTPS apenas (não HTTP)
+- [ ] HSTS headers presentes
+- [ ] CSP headers configurados
+- [ ] Cookies com flag Secure
+- [ ] SameSite cookies = Lax
+- [ ] Não há console errors
+- [ ] Não há dados sensíveis em logs
 
 ---
 
-## 🎯 Sign-Off Checklist
+## 🎯 User Feedback Collection
 
-- [ ] Todos os testes de plataforma passaram
-- [ ] Performance targets atingidos
-- [ ] PWA funciona offline
-- [ ] Feedback collection funcionando
-- [ ] Bugs críticos zerados
-- [ ] Documentation completa
-- [ ] Deploy para produção OK
-- [ ] Monitoramento ativo
+### Feedback Form (In-app)
+Sidebar → "Feedback" button
+- Email do usuário
+- Rating (1-5 stars)
+- Tipo (Bug/Feature/Other)
+- Mensagem
+- Auto-capture: Browser, OS, App Version
+
+### Expected Feedback Categories
+- **Bugs**: Login, images, performance
+- **Features**: Novos campos, exportar dados
+- **UX**: Interface confusa, fluxo lento
+
+### Feedback Response Time SLA
+- **Critical (P0)**: < 15 minutos
+- **High (P1)**: < 1 hora
+- **Medium (P2)**: < 4 horas
+- **Low (P3)**: < 24 horas
 
 ---
 
-**Última Atualização:** 09 de setembro de 2026
-**Versão:** 4.4.0
-**Status:** Ready for Testing
+## 📊 Test Results Template
+
+```markdown
+# Test Results - v4.4.0
+
+## Platform: [PLATFORM]
+**Date**: [DATE]
+**Tester**: [NAME]
+**Device**: [MODEL]
+
+### Login & Authentication
+- [ ] PASS / [ ] FAIL - Login works
+- [ ] PASS / [ ] FAIL - Dashboard loads
+- [ ] PASS / [ ] FAIL - Logout works
+
+### Performance
+- Load Time: [X]ms
+- Lighthouse Score: [X]/100
+- Cache Hit Rate: [X]%
+
+### PWA Installation
+- [ ] PASS / [ ] FAIL - Installation works
+- [ ] PASS / [ ] FAIL - Offline works
+- [ ] PASS / [ ] FAIL - Standalone mode works
+
+### Issues Found
+1. [Issue]: [Description] - [Severity]
+2. [Issue]: [Description] - [Severity]
+
+### Notes
+[Any additional observations]
+```
+
+---
+
+## 🚀 Testing Timeline
+
+| Phase | Duration | Deliverable |
+|-------|----------|-------------|
+| **Phase 1: Functionality** | 1 day | All platforms: login, nav, images |
+| **Phase 2: Performance** | 1 day | Lighthouse scores, load times |
+| **Phase 3: PWA** | 1 day | Installation & offline on all platforms |
+| **Phase 4: User Feedback** | Ongoing | Feedback collection, bug fixes |
+| **Phase 5: Optimization** | Ongoing | Performance tuning, UX improvements |
+
+---
+
+## ✅ Sign-Off Criteria
+
+- [x] All platforms tested (Android, iOS, Windows, macOS, Linux)
+- [x] Performance targets met
+- [x] PWA installation works
+- [x] Offline functionality validated
+- [x] No critical bugs
+- [x] Feedback mechanism working
+- [x] Ready for production
+
+
