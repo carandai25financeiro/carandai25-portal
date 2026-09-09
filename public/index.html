@@ -14,9 +14,6 @@
 <body>
   <div id="app">
     <section class="auth-screen" id="authScreen">
-      <div class="auth-art">
-        <img class="manual-cover-login" src="/assets/capa-manual-rio.png" alt="Capa do Manual do Expositor Carandaí 25 · Jockey Club Brasileiro · Rio de Janeiro · 05 a 08 de novembro de 2026" />
-      </div>
       <div class="auth-panel">
         <div class="wordmark">CARANDAÍ 25</div>
         <div class="auth-copy">
@@ -26,7 +23,7 @@
         </div>
         <form id="loginForm" class="login-form">
           <label>E-mail de acesso<input type="email" id="loginEmail" autocomplete="username" required placeholder="sua@marca.com" /></label>
-          <label>Senha<input type="password" id="loginPassword" autocomplete="current-password" required placeholder="••••••••" /></label>
+          <label>Senha<div class="password-wrapper"><input type="password" id="loginPassword" autocomplete="current-password" required placeholder="••••••••" /><button type="button" class="password-toggle" id="passwordToggle" aria-label="Mostrar/ocultar senha">👁</button></div></label>
           <button class="btn btn-dark btn-wide" type="submit">Entrar no portal <span>↗</span></button>
           <div class="form-message" id="loginMessage"></div>
         </form>
@@ -72,3 +69,4 @@
   <script src="/app.js" defer></script>
 </body>
 </html>
+
