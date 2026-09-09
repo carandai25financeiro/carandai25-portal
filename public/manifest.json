@@ -1,0 +1,13 @@
+{
+  "name": "Carandaí 25 | Portal da Marca",
+  "short_name": "C25 Marcas",
+  "description": "Portal operacional das marcas expositoras do Carandaí 25.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f0e9",
+  "theme_color": "#111111",
+  "icons": [
+    {"src":"/icon-192.png","sizes":"192x192","type":"image/png"},
+    {"src":"/icon-512.png","sizes":"512x512","type":"image/png"}
+  ]
+}

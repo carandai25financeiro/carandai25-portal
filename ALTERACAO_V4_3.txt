@@ -1,0 +1,13 @@
+CARANDAI 25 - PORTAL DA MARCA V4.3
+
+ALTERACAO DESTA VERSAO
+- A arte abstrata do lado esquerdo da tela de login foi removida.
+- No lugar dela, foi inserida a capa oficial do Manual do Expositor do Rio de Janeiro 2026.
+- A capa fica inteira na tela, sem corte, em desktop e celular.
+- Nenhuma alteracao foi feita no banco de dados, contratos, boletos, documentos ou mensagens.
+
+PARA REIMPLANTAR
+1. Substitua os arquivos do repositorio GitHub pelos desta versao.
+2. Nao exclua o Volume /storage no Railway.
+3. Aguarde o deploy automatico.
+4. Confira /api/health: deve retornar version 4.3.0.

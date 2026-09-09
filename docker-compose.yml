@@ -1,0 +1,14 @@
+services:
+  carandai25-portal:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      STORAGE_ROOT: /storage
+      ADMIN_PASSWORD: "TROQUE-ESTA-SENHA-ANTES-DO-PRIMEIRO-START"
+      SEED_DEMO: "0"
+    volumes:
+      - ./storage:/storage
+    restart: unless-stopped

@@ -1,0 +1,78 @@
+CARANDAI 25 - REIMPLANTAR NO GITHUB E RAILWAY
+Versao 4.3.0
+
+OBJETIVO
+Substituir a programacao antiga pela versao completa 4.2 sem perder os dados que ja estao no Railway.
+
+PASSO 1 - BAIXAR E EXTRAIR
+Extraia o ZIP desta versao no seu computador.
+
+PASSO 2 - CONFERIR A RAIZ
+Ao abrir a pasta extraida, voce deve ver diretamente:
+Dockerfile
+server.js
+package.json
+railway.toml
+public
+README_FIRST.txt
+REIMPLANTAR_GITHUB.txt
+
+NAO deve existir uma pasta extra por cima desses arquivos no GitHub.
+
+PASSO 3 - GITHUB
+Abra o repositorio atual do portal.
+Voce pode substituir os arquivos existentes mantendo o mesmo repositorio.
+
+Forma simples pelo navegador:
+1. Entre no repositorio.
+2. Use Add file > Upload files.
+3. Envie os arquivos/pastas desta versao para a RAIZ.
+4. Se o GitHub nao permitir sobrescrever uma pasta inteira de uma vez, atualize os arquivos existentes e envie a nova pasta public/assets/estruturas.
+5. Confirme que public/index.html existe.
+6. Confirme que public/assets/estruturas contem as 4 imagens.
+7. Clique em Commit changes.
+
+PASSO 4 - RAILWAY
+O Railway deve iniciar o deploy automaticamente se o repositorio estiver conectado.
+
+CONFIRA AS VARIABLES:
+NODE_ENV=production
+PORT=3000
+STORAGE_ROOT=/storage
+SEED_DEMO=0
+ADMIN_PASSWORD=sua senha forte
+
+PASSO 5 - NAO MEXER NO VOLUME
+Mantenha o mesmo Volume montado em /storage.
+NAO apague, NAO recrie e NAO monte em /app ou /app/public.
+
+PASSO 6 - TESTE
+Quando o deploy ficar verde, abra:
+https://SEU-DOMINIO/api/health
+
+Deve aparecer algo semelhante a:
+{"ok":true,"service":"carandai25-portal","version":"4.3.0",...}
+
+Depois abra o portal normalmente e teste:
+- login do administrador
+- cadastro de marca
+- contrato
+- boleto
+- documentos
+- mensagens
+- estrutura
+- imagem da estrutura
+
+PASSO 7 - IMAGEM DA ESTRUTURA
+Cadastre/edite uma marca e escolha um dos segmentos:
+Moda
+Bem-Estar / Decoracao
+Bolsas e Sapatos
+Acessorios
+
+A imagem correspondente deve aparecer automaticamente na aba Estrutura da marca.
+
+SE APARECER ERRO /app/public/index.html
+Significa que o GitHub/Railway esta usando a pasta errada como raiz.
+Na tela inicial do repositorio, Dockerfile, server.js e public devem aparecer diretamente.
+Se eles estiverem dentro de uma subpasta, ajuste Railway > Service > Settings > Root Directory para essa subpasta ou mova os arquivos para a raiz.

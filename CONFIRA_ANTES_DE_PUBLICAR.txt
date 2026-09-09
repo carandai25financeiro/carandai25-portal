@@ -1,0 +1,24 @@
+CARANDAI 25 - V4.3 - CHECKLIST ANTES DE PUBLICAR
+
+[ ] Dockerfile aparece na raiz do GitHub
+[ ] server.js aparece na raiz do GitHub
+[ ] package.json aparece na raiz do GitHub
+[ ] pasta public aparece na raiz do GitHub
+[ ] public/index.html existe
+[ ] public/app.js existe
+[ ] public/styles.css existe
+[ ] public/assets/estruturas/estrutura-moda.png existe
+[ ] public/assets/estruturas/estrutura-bem-estar-decoracao.png existe
+[ ] public/assets/estruturas/estrutura-bolsas-sapatos.png existe
+[ ] public/assets/estruturas/estrutura-acessorios.png existe
+[ ] Railway Volume esta montado em /storage
+[ ] NODE_ENV=production
+[ ] STORAGE_ROOT=/storage
+[ ] SEED_DEMO=0
+[ ] ADMIN_PASSWORD esta configurada apenas no Railway
+[ ] /api/health retorna version 4.3.0
+[ ] Login admin funciona
+[ ] Imagem da estrutura aparece para uma marca de teste
+
+IMPORTANTE
+Nao apague o volume /storage se ja houver marcas reais cadastradas.

@@ -1,0 +1,13 @@
+{
+  "name": "carandai25-portal-marcas",
+  "version": "4.3.0",
+  "private": true,
+  "description": "Portal operacional multi-marca Carandai 25 - Railway/GitHub com imagens de estruturas e capa do manual no login",
+  "scripts": {
+    "start": "node server.js",
+    "reset-demo": "node server.js --reset-demo"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

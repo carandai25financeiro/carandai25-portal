@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Carandaí 25 | Portal da Marca</title>
+  <meta name="description" content="Portal operacional das marcas expositoras Carandaí 25." />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <section class="auth-screen" id="authScreen">
+      <div class="auth-art">
+        <img class="manual-cover-login" src="/assets/capa-manual-rio.png" alt="Capa do Manual do Expositor Carandaí 25 · Jockey Club Brasileiro · Rio de Janeiro · 05 a 08 de novembro de 2026" />
+      </div>
+      <div class="auth-panel">
+        <div class="wordmark">CARANDAÍ 25</div>
+        <div class="auth-copy">
+          <span class="kicker">PORTAL DA MARCA</span>
+          <h1>Seu evento,<br><em>todo em um lugar.</em></h1>
+          <p>Contrato, boletos, estrutura, documentos, logística e conversa direta com a equipe Carandaí 25.</p>
+        </div>
+        <form id="loginForm" class="login-form">
+          <label>E-mail de acesso<input type="email" id="loginEmail" autocomplete="username" required placeholder="sua@marca.com" /></label>
+          <label>Senha<input type="password" id="loginPassword" autocomplete="current-password" required placeholder="••••••••" /></label>
+          <button class="btn btn-dark btn-wide" type="submit">Entrar no portal <span>↗</span></button>
+          <div class="form-message" id="loginMessage"></div>
+        </form>
+        <div class="auth-foot">Carandaí 25 · Rio de Janeiro · 2026</div>
+      </div>
+    </section>
+
+    <section class="portal hidden" id="portal">
+      <header class="topbar">
+        <button class="menu-toggle" id="menuToggle" aria-label="Abrir menu">☰</button>
+        <div class="wordmark small">CARANDAÍ 25</div>
+        <div class="topbar-right">
+          <span class="role-chip" id="roleChip">Portal</span>
+          <button class="avatar-button" id="avatarButton" aria-label="Conta"><span id="avatarInitials">C25</span></button>
+        </div>
+      </header>
+
+      <div class="portal-shell">
+        <aside class="sidebar" id="sidebar">
+          <div class="sidebar-head">
+            <div class="side-brand" id="sideBrand">Minha marca</div>
+            <div class="side-meta" id="sideMeta">Rio de Janeiro · Nov 2026</div>
+          </div>
+          <nav id="sideNav"></nav>
+          <div class="sidebar-bottom">
+            <a href="https://carandai25.com/" target="_blank" rel="noopener">carandai25.com ↗</a>
+            <button id="logoutButton">Sair</button>
+          </div>
+        </aside>
+
+        <main class="content" id="content">
+          <div class="loading"><div class="loading-mark">25</div><p>Carregando portal...</p></div>
+        </main>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+  <div class="modal-backdrop hidden" id="modalBackdrop">
+    <div class="modal" id="modal"></div>
+  </div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

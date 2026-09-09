@@ -1,0 +1,19 @@
+CARANDAI 25 - RAILWAY - CONFIGURACAO DA VERSAO 4.2
+
+1. O repositorio GitHub deve ter Dockerfile, server.js, package.json e public na raiz.
+2. No Railway, conecte o mesmo repositorio ao servico do portal.
+3. Variables:
+   NODE_ENV=production
+   PORT=3000
+   STORAGE_ROOT=/storage
+   SEED_DEMO=0
+   ADMIN_PASSWORD=CRIE_UMA_SENHA_FORTE
+4. Volume:
+   monte em /storage
+5. Nao monte volume em /app nem /app/public.
+6. Healthcheck:
+   /api/health
+7. Teste primeiro o dominio Railway.
+8. Depois use portal.carandai25.com como Custom Domain.
+9. Mantenha backup do Volume.
+10. Em cada novo deploy, preserve o mesmo Volume.

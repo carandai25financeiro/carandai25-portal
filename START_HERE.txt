@@ -1,0 +1,13 @@
+CARANDAI 25 - PORTAL DA MARCA V4.3
+
+PARA PUBLICAR:
+1. Leia REIMPLANTAR_GITHUB.txt
+2. Envie TODO o conteudo desta pasta para a raiz do repositorio GitHub
+3. Mantenha o Volume Railway em /storage
+4. Confira as Variables do Railway
+5. Aguarde o deploy
+6. Teste /api/health
+7. Entre no portal como administrador
+
+AS FOTOS DAS ESTRUTURAS JA ESTAO INCLUIDAS NA PROGRAMACAO.
+Nao precisa criar a pasta manualmente no GitHub se voce enviar esta versao completa.
