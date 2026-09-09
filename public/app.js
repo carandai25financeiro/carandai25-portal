@@ -166,7 +166,6 @@
   }
 
   function viewContract(){if(state.me.role==='admin'){renderAdminContract();return;}
-    const c=state.data.contract;const b=state.data.brand;const b=state.data.brand;
     const c=state.data.contract;const b=state.data.brand;
     content.innerHTML=`${pageHead('DOCUMENTOS COMERCIAIS','Meu <em>contrato.</em>','O contrato exibido é vinculado exclusivamente ao login desta marca.',statusLabel(c?.status||'pending'),'STATUS')}
       <div class="card"><div class="card-row"><div><span class="label">CONTRATO DA MARCA</span><h3>${c?.file?'Documento cadastrado':'Aguardando documento'}</h3><p>${c?.file?`Arquivo: ${esc(c.file.original_name)} · atualizado em ${fmtDateTime(c.updated_at)}`:'A equipe Comercial ainda não disponibilizou o PDF do contrato neste portal.'}</p></div>${status(c?.status||'pending')}</div>
