@@ -165,8 +165,9 @@
       <div class="note" style="margin-top:18px">A Carandaí 25 não se responsabiliza por objetos deixados no Jockey Club após o período de desmontagem.</div>`;
   }
 
-  function viewContract(){
-    const c=state.data.contract;
+  function viewContract(){if(state.me.role==='admin'){renderAdminContract();return;}
+    const c=state.data.contract;const b=state.data.brand;const b=state.data.brand;
+    const c=state.data.contract;const b=state.data.brand;
     content.innerHTML=`${pageHead('DOCUMENTOS COMERCIAIS','Meu <em>contrato.</em>','O contrato exibido é vinculado exclusivamente ao login desta marca.',statusLabel(c?.status||'pending'),'STATUS')}
       <div class="card"><div class="card-row"><div><span class="label">CONTRATO DA MARCA</span><h3>${c?.file?'Documento cadastrado':'Aguardando documento'}</h3><p>${c?.file?`Arquivo: ${esc(c.file.original_name)} · atualizado em ${fmtDateTime(c.updated_at)}`:'A equipe Comercial ainda não disponibilizou o PDF do contrato neste portal.'}</p></div>${status(c?.status||'pending')}</div>
       <div class="inline-actions" style="margin-top:18px">${c?.file?`<button class="btn btn-dark" id="openContract">Abrir contrato ↗</button>`:''}<a class="btn" href="mailto:carandai25comercial@gmail.com?subject=Carandai%2025%20-%20Contrato%20da%20marca">Falar com Comercial</a></div></div>`;
@@ -357,3 +358,33 @@
   if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));}
   boot();
 })();
+
+  // Funções de geração de contrato
+  function generateContractModal(){
+    const b=state.data.brand;
+    const modal_html=`${modalHead('Gerar Contrato','COMERCIAL')}<form id="contractForm" class="form-grid"><div class="field full"><label>Nome da Marca</label><input type="text" value="${esc(b.name)}" disabled></div><div class="field full"><label>CNPJ</label><input type="text" value="${esc(b.cnpj||'')}" disabled></div><div class="field full"><label>Endereço</label><input type="text" value="${esc(b.address||'')}" disabled></div><div class="field full"><label>Nome do Representante</label><input type="text" id="representativeName" value="${esc(b.representative||'')}" required placeholder="Nome completo"></div><div class="field full"><label>Valor Total (R$)</label><input type="number" id="contractValue" value="6500.00" step="0.01" required></div><div class="field full"><label>Parcelas</label><select id="installmentsCount"><option value="1">1 parcela</option><option value="2">2 parcelas</option><option value="3" selected>3 parcelas</option></select></div><div id="paymentsContainer"></div><div class="field full"><button class="btn btn-dark" type="submit">Gerar Contrato</button></div></form>`;
+    openModal(modal_html);
+    $('#installmentsCount').addEventListener('change',renderPaymentFields);
+    renderPaymentFields();
+    $('#contractForm').addEventListener('submit',async e=>{e.preventDefault();try{const contractData={name:b.name,cnpj:b.cnpj,address:b.address,representative:$('#representativeName').value,segment:b.segment||'',contractValue:parseFloat($('#contractValue').value),paymentTerms:getPaymentTerms()};await api('/api/contract/generate',{method:'POST',body:{brandId:b.id,...contractData}});closeModal();toast('Contrato gerado e enviado!');await navigate('contract');}catch(err){showError(err)}});
+  }
+  
+  function renderPaymentFields(){
+    const count=parseInt($('#installmentsCount').value)||1;
+    const container=$('#paymentsContainer');
+    const value=parseFloat($('#contractValue').value)||6500;
+    const perInstallment=(value/count).toFixed(2);
+    container.innerHTML='';
+    for(let i=1;i<=count;i++){const monthsAhead=(i-1)*2;const dueDate=new Date(2026,7,30+monthsAhead);const dueDateStr=String(dueDate.getDate()).padStart(2,'0')+'/'+String(dueDate.getMonth()+1).padStart(2,'0')+'/'+dueDate.getFullYear();container.innerHTML+=`<div class="field full"><label>${i}ª Parcela - Vencimento</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><input type="date" class="due-date" value="${String(dueDate.getFullYear())}-${String(dueDate.getMonth()+1).padStart(2,'0')}-${String(dueDate.getDate()).padStart(2,'0')}" required><select class="payment-method"><option>Boleto</option><option>PIX</option><option selected>Boleto/PIX</option></select></div></div>`;}
+  }
+  
+  function getPaymentTerms(){
+    const count=parseInt($('#installmentsCount').value)||1;
+    const value=parseFloat($('#contractValue').value)||6500;
+    const perInstallment=(value/count).toFixed(2);
+    const terms=[];
+    const dueDates=$$('.due-date');
+    const methods=$$('.payment-method');
+    for(let i=0;i<count;i++){terms.push({dueDate:dueDates[i].value.split('-').reverse().join('/'),amount:parseFloat(perInstallment),method:methods[i].value});}
+    return terms;
+  }
