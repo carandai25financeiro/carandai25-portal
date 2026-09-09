@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bem-vindo ao Carandaí 25 - Novembro 2026</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
+        .wrapper { background: #f5f5f5; padding: 20px; }
+        .container { max-width: 650px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+        
+        /* HEADER */
+        .header { 
+            background: linear-gradient(135deg, #111111 0%, #2c2c2c 100%); 
+            color: white; 
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: -50px;
+            width: 200px;
+            height: 200px;
+            background: rgba(240, 100, 45, 0.1);
+            border-radius: 50%;
+        }
+        .header h1 { 
+            font-size: 36px; 
+            font-weight: 700;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+        }
+        .header .subtitle { 
+            font-size: 14px; 
+            opacity: 0.95;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* CONTENT */
+        .content { padding: 40px 30px; }
+        .greeting { 
+            font-size: 16px; 
+            color: #222;
+            margin-bottom: 30px;
+            line-height: 1.8;
+        }
+        .greeting strong { color: #111; font-weight: 600; }
+        
+        /* SECTIONS */
+        .section { margin: 30px 0; }
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #111;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #f0642d;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section-title span { font-size: 24px; }
+        
+        /* INFO BOXES */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .info-box {
+            background: #f8f8f8;
+            border-left: 4px solid #f0642d;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .info-box label { 
+            font-weight: 700; 
+            color: #111; 
+            display: block;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            color: #f0642d;
+        }
+        .info-box value { 
+            font-size: 15px; 
+            color: #333;
+            display: block;
+        }
+        .info-box .highlight {
+            font-size: 18px;
+            font-weight: 700;
+            color: #f0642d;
+            margin-top: 4px;
+        }
+        
+        /* PAYMENT PLAN */
+        .payment-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .payment-table th {
+            background: #111;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .payment-table td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+        .payment-table tr:last-child td { border-bottom: none; }
+        .payment-table .installment { font-weight: 600; color: #111; }
+        .payment-table .value { font-weight: 700; color: #f0642d; }
+        .payment-table .due-date { color: #666; }
+        
+        /* STRUCTURE TABLE */
+        .structure-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+            font-size: 13px;
+        }
+        .structure-table th {
+            background: #2c2c2c;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        .structure-table td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .structure-table tr:last-child td { border-bottom: none; }
+        .structure-table .segment { font-weight: 600; color: #111; }
+        .structure-table .power { text-align: center; color: #16704e; font-weight: 600; }
+        
+        /* CHECKLIST */
+        .checklist { list-style: none; margin: 15px 0; }
+        .checklist li {
+            padding: 10px 0;
+            padding-left: 28px;
+            position: relative;
+            color: #555;
+            line-height: 1.6;
+        }
+        .checklist li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #16704e;
+            font-weight: 700;
+            font-size: 18px;
+        }
+        
+        /* ALERTS */
+        .alert {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            border-left: 4px solid;
+        }
+        .alert-warning {
+            background: #fff3cd;
+            border-color: #f0642d;
+            color: #856404;
+        }
+        .alert-info {
+            background: #d1ecf1;
+            border-color: #17a2b8;
+            color: #0c5460;
+        }
+        .alert strong { color: #111; display: block; margin-bottom: 5px; }
+        
+        /* BUTTONS */
+        .button-group {
+            text-align: center;
+            margin: 25px 0;
+        }
+        .btn {
+            display: inline-block;
+            padding: 14px 30px;
+            margin: 0 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: 0.3s;
+            border: none;
+            cursor: pointer;
+            text-align: center;
+        }
+        .btn-primary {
+            background: #f0642d;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #d94f1f;
+            box-shadow: 0 4px 12px rgba(240, 100, 45, 0.3);
+        }
+        .btn-secondary {
+            background: #2345d8;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #1a36a8;
+        }
+        
+        /* CONTACT */
+        .contact-card {
+            background: #f0f0f0;
+            border-left: 4px solid #111;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .contact-card strong {
+            display: block;
+            color: #111;
+            margin-bottom: 3px;
+        }
+        .contact-card p {
+            margin: 3px 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .contact-card a {
+            color: #2345d8;
+            text-decoration: none;
+        }
+        .contact-card a:hover {
+            text-decoration: underline;
+        }
+        
+        /* TIMELINE */
+        .timeline {
+            margin: 20px 0;
+        }
+        .timeline-item {
+            display: flex;
+            margin: 15px 0;
+            position: relative;
+        }
+        .timeline-icon {
+            width: 40px;
+            height: 40px;
+            background: #f0642d;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-right: 15px;
+        }
+        .timeline-content h4 {
+            margin: 0 0 5px 0;
+            color: #111;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .timeline-content p {
+            margin: 0;
+            color: #666;
+            font-size: 13px;
+        }
+        
+        /* FOOTER */
+        .footer {
+            background: #111;
+            color: #ccc;
+            padding: 30px;
+            text-align: center;
+            font-size: 12px;
+        }
+        .footer h4 {
+            color: #f0642d;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .footer p {
+            margin: 5px 0;
+        }
+        .footer-links {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #333;
+        }
+        .footer-links a {
+            color: #f0642d;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+        .footer-links a:hover {
+            text-decoration: underline;
+        }
+        
+        /* RESPONSIVE */
+        @media (max-width: 600px) {
+            .container { border-radius: 0; }
+            .content { padding: 20px; }
+            .info-grid { grid-template-columns: 1fr; }
+            .btn { display: block; margin: 10px 0; width: 100%; }
+            .section-title { font-size: 16px; }
+            .header h1 { font-size: 28px; }
+            .payment-table, .structure-table { font-size: 12px; }
+            .payment-table th, .payment-table td,
+            .structure-table th, .structure-table td { padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <!-- HEADER -->
+            <div class="header">
+                <h1>🎉 Carandaí 25</h1>
+                <p class="subtitle">Novembro de 2026 • Rio de Janeiro</p>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="content">
+                <!-- GREETING -->
+                <div class="greeting">
+                    <p>Olá <strong>{{BRAND_NAME}}</strong>,</p>
+                    <p>Que honra tê-lo(a) conosco! 🙌 Você foi selecionado(a) para participar da <strong>Carandaí 25</strong>, o maior evento de moda e lifestyle do Rio de Janeiro. Aqui estão todas as informações que você precisa para uma participação de sucesso!</p>
+                </div>
+
+                <!-- EVENT OVERVIEW -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>📍</span> Informações Gerais do Evento
+                    </div>
+                    <div class="info-grid">
+                        <div class="info-box">
+                            <label>Local</label>
+                            <value>Jockey Club<br>Tribunas B & C</value>
+                        </div>
+                        <div class="info-box">
+                            <label>Data</label>
+                            <value>05 a 08 de<br>Novembro 2026</value>
+                        </div>
+                        <div class="info-box">
+                            <label>Horário</label>
+                            <value>13h às 21h<br>(4 dias)</value>
+                        </div>
+                        <div class="info-box">
+                            <label>Segmento</label>
+                            <value>{{SEGMENT}}</value>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PAYMENT SECTION -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>💳</span> Plano de Pagamento
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <strong>Valor Total: R$ 6.000,00</strong>
+                        Parcelado em 3 vezes via boleto bancário
+                    </div>
+
+                    <table class="payment-table">
+                        <thead>
+                            <tr>
+                                <th>Parcela</th>
+                                <th>Vencimento</th>
+                                <th>Valor</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="installment">1ª Parcela</td>
+                                <td class="due-date">10/09/2026</td>
+                                <td class="value">R$ 2.000,00</td>
+                                <td>{{STATUS_1}}</td>
+                            </tr>
+                            <tr>
+                                <td class="installment">2ª Parcela</td>
+                                <td class="due-date">10/10/2026</td>
+                                <td class="value">R$ 2.000,00</td>
+                                <td>{{STATUS_2}}</td>
+                            </tr>
+                            <tr>
+                                <td class="installment">3ª Parcela</td>
+                                <td class="due-date">03/11/2026</td>
+                                <td class="value">R$ 2.000,00</td>
+                                <td>{{STATUS_3}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- CONTRACT -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>✍️</span> Confirmação de Participação
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <strong>⚠️ Contrato Obrigatório</strong>
+                        A assinatura do contrato é <strong>imprescindível</strong> para sua participação no evento. O contrato é assinado digitalmente pela plataforma <strong>Contractktor</strong>.
+                    </div>
+
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-icon">1</div>
+                            <div class="timeline-content">
+                                <h4>Abra seu Email</h4>
+                                <p>Você deve ter recebido um email separado com o contrato (verifique SPAM se não encontrar)</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">2</div>
+                            <div class="timeline-content">
+                                <h4>Clique no Botão</h4>
+                                <p>Clique em "Assinar Contrato Digitalmente" para acessar a plataforma Contractktor</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">3</div>
+                            <div class="timeline-content">
+                                <h4>Revise os Dados</h4>
+                                <p>Verifique se todos os dados estão corretos (nome, CNPJ, segmento, valor)</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">4</div>
+                            <div class="timeline-content">
+                                <h4>Assine Digitalmente</h4>
+                                <p>Assine o contrato eletronicamente (leva 2-3 minutos). Você receberá confirmação imediata.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <a href="mailto:carandai25comercial@gmail.com" class="btn btn-primary">
+                            ✉️ Email do Contrato Não Recebido?
+                        </a>
+                    </div>
+                </div>
+
+                <!-- STRUCTURE & SETUP -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>🏗️</span> Estrutura Fornecida por Segmento
+                    </div>
+                    
+                    <table class="structure-table">
+                        <thead>
+                            <tr>
+                                <th>Segmento</th>
+                                <th>Estrutura</th>
+                                <th>Dimensões</th>
+                                <th>Energia</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="segment">👚 Roupas</td>
+                                <td>Araras + 1 cadeira</td>
+                                <td>1,80m × 1,74m × 0,30m</td>
+                                <td class="power">✓</td>
+                            </tr>
+                            <tr>
+                                <td class="segment">💍 Acessórios & Décor</td>
+                                <td>Mesa + 1 cadeira</td>
+                                <td>1,60m × 0,80m</td>
+                                <td class="power">✓</td>
+                            </tr>
+                            <tr>
+                                <td class="segment">👜 Bolsas, Sapatos & Chapéus</td>
+                                <td>Estante + 1 cadeira</td>
+                                <td>1,80m × 1,74m × 0,30m</td>
+                                <td class="power">✓</td>
+                            </tr>
+                            <tr>
+                                <td class="segment">💄 Beleza</td>
+                                <td>Estante + 1 cadeira</td>
+                                <td>1,80m × 1,74m × 0,30m</td>
+                                <td class="power">✓</td>
+                            </tr>
+                            <tr>
+                                <td class="segment">🧘 Bem-Estar</td>
+                                <td>Estante + Aparador + 1 cadeira</td>
+                                <td>2,40m × 1,50m × 0,50m</td>
+                                <td class="power">✓</td>
+                            </tr>
+                            <tr>
+                                <td class="segment">🍴 Alimentação</td>
+                                <td>Food Truck</td>
+                                <td>Regras Operacionais</td>
+                                <td class="power">✓</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- WHAT TO BRING -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>📦</span> O Que Você Deve Trazer
+                    </div>
+                    
+                    <ul class="checklist">
+                        <li><strong>Roupas:</strong> Apenas os cabides (estruturas fornecidas por nós)</li>
+                        <li><strong>Acessórios:</strong> Embalagem personalizada conforme seu conceito</li>
+                        <li><strong>Biquíni/Roupa de Praia:</strong> Embalagem personalizada + cabides</li>
+                        <li><strong>Sapatos/Bolsas:</strong> Estrutura fornecida (prateleiras com 0,35m)</li>
+                        <li><strong>Sacolas Personalizadas:</strong> Fornecidas pela produção, mas trazer extras é bom!</li>
+                        <li><strong>Equipe:</strong> Profissionais capacitados para operar seu espaço</li>
+                        <li><strong>Documentação:</strong> Certificado de origem, nota fiscal e SEFAZ (detalhes abaixo)</li>
+                    </ul>
+                </div>
+
+                <!-- SEFAZ SECTION -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>🚨</span> Autorização SEFAZ (Importante!)
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <strong>Obrigatório para Participar</strong>
+                        Sua marca <strong>precisa solicitar autorização SEFAZ</strong> para comercializar no evento Carandaí 25. Esta é uma exigência fiscal do Rio de Janeiro.
+                    </div>
+
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-icon">1</div>
+                            <div class="timeline-content">
+                                <h4>Solicitar Autorização</h4>
+                                <p>Entre em contato com sua contadora ou com a SEFAZ/RJ para solicitar Comunicado de Exceção ou autorização equivalente</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">2</div>
+                            <div class="timeline-content">
+                                <h4>Prepare Documentação</h4>
+                                <p>Tenha à mão as notas fiscais das mercadorias que serão expostas/comercializadas</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">3</div>
+                            <div class="timeline-content">
+                                <h4>Envie para Nós</h4>
+                                <p>Envie cópia da SEFAZ + notas fiscais até <strong>25/10/2026</strong> para financeiro2@carandai25.com</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <strong>📧 Envie Seu Pacote Fiscal Para:</strong><br>
+                        <strong>Email:</strong> financeiro2@carandai25.com<br>
+                        <strong>Assunto:</strong> SEFAZ + Documentos - {{BRAND_NAME}}<br>
+                        <strong>Prazo:</strong> até 25/10/2026<br>
+                        <strong>Anexe:</strong> Autorização SEFAZ + Notas Fiscais
+                    </div>
+                </div>
+
+                <!-- SCHEDULE -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>🗓️</span> Cronograma Importante
+                    </div>
+                    
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-icon">→</div>
+                            <div class="timeline-content">
+                                <h4>Agora: Assine o Contrato</h4>
+                                <p>Procure no seu email pelo email do contrato (verificar SPAM)</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">→</div>
+                            <div class="timeline-content">
+                                <h4>30/09 a 03/11: Pagamento</h4>
+                                <p>Pagamento em 3 parcelas conforme cronograma</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">→</div>
+                            <div class="timeline-content">
+                                <h4>25/10/2026: Documentação Fiscal</h4>
+                                <p>Envio da SEFAZ e notas fiscais (data limite!)</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">→</div>
+                            <div class="timeline-content">
+                                <h4>04/11: Montagem</h4>
+                                <p>Dia de montagem (horário será confirmado)</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">→</div>
+                            <div class="timeline-content">
+                                <h4>05-08/11: Evento!</h4>
+                                <p>Carandaí 25 acontece! Aproveite!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTACT & SUPPORT -->
+                <div class="section">
+                    <div class="section-title">
+                        <span>📞</span> Dúvidas? Estamos Aqui Para Ajudar!
+                    </div>
+                    
+                    <div class="contact-card">
+                        <strong>📧 Assuntos Comerciais & Contrato</strong>
+                        <p><a href="mailto:carandai25comercial@gmail.com">carandai25comercial@gmail.com</a></p>
+                    </div>
+
+                    <div class="contact-card">
+                        <strong>💳 Assuntos Financeiros & Pagamento</strong>
+                        <p><a href="mailto:financeiro2@carandai25.com">financeiro2@carandai25.com</a></p>
+                    </div>
+
+                    <div class="contact-card">
+                        <strong>🚚 Assuntos Logísticos & Montagem</strong>
+                        <p>Será informado em breve</p>
+                    </div>
+
+                    <div class="contact-card">
+                        <strong>📱 Portal da Marca (24/7)</strong>
+                        <p><a href="https://portal.carandai25.com">portal.carandai25.com</a><br>
+                        Acesse para acompanhar status do seu contrato e enviar documentos</p>
+                    </div>
+                </div>
+
+                <!-- CONFIRMATION -->
+                <div class="section">
+                    <div class="alert alert-info">
+                        <strong>✅ Por Favor, Confirme o Recebimento</strong>
+                        Responda este email com "Recebi" para confirmar que você recebeu todas as informações. Sua confirmação nos ajuda a garantir que nada foi perdido no spam!
+                    </div>
+                    
+                    <div class="button-group">
+                        <a href="mailto:carandai25comercial@gmail.com?subject=Confirmo%20recebimento%20das%20informações%20-%20{{BRAND_NAME}}" class="btn btn-primary">
+                            ✓ Confirmar Recebimento
+                        </a>
+                    </div>
+                </div>
+
+                <!-- CLOSING -->
+                <div style="margin-top: 30px; padding-top: 30px; border-top: 2px solid #f0f0f0; text-align: center; color: #666; font-size: 14px;">
+                    <p>Estamos muito entusiasmados com sua participação! 🎉</p>
+                    <p><strong>Qualquer dúvida, não hesite em nos contatar.</strong></p>
+                    <p style="margin-top: 15px; font-weight: 600; color: #111;">Nos vemos em Novembro no Jockey Club!</p>
+                </div>
+            </div>
+
+            <!-- FOOTER -->
+            <div class="footer">
+                <h4>CARANDAÍ 25</h4>
+                <p>05 a 08 de Novembro de 2026</p>
+                <p>Jockey Club Brasileiro • Rio de Janeiro</p>
+                
+                <div class="footer-links">
+                    <a href="https://portal.carandai25.com">Portal da Marca</a> | 
+                    <a href="https://carandai25.com.br">Site Oficial</a> | 
+                    <a href="mailto:carandai25comercial@gmail.com">Contato</a>
+                </div>
+                
+                <p style="margin-top: 15px; font-size: 11px; color: #999;">
+                    © 2026 TR ACCIOLI PONTES COMÉRCIO E EVENTOS LTDA.<br>
+                    Todos os direitos reservados.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

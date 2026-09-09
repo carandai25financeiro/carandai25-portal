@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contrato Carandaí 25 - Assinatura Digital</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #111111 0%, #2c2c2c 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 28px; margin-bottom: 5px; font-weight: 600; }
+        .header p { font-size: 14px; opacity: 0.9; }
+        .content { padding: 30px 20px; background: #f9f9f9; }
+        .section { margin: 20px 0; }
+        .section h2 { font-size: 16px; font-weight: 700; color: #111; margin-bottom: 10px; border-bottom: 2px solid #f0642d; padding-bottom: 8px; }
+        .info-box { background: white; border-left: 4px solid #f0642d; padding: 15px; margin: 15px 0; font-size: 14px; }
+        .info-box strong { color: #111; }
+        .event-details { background: white; padding: 15px; border-radius: 6px; margin: 15px 0; }
+        .event-details dt { font-weight: 700; color: #111; margin-top: 10px; }
+        .event-details dd { margin-left: 20px; color: #666; margin-bottom: 8px; }
+        .button-group { text-align: center; margin: 25px 0; }
+        .btn { display: inline-block; padding: 14px 28px; margin: 0 8px; border-radius: 4px; font-size: 14px; font-weight: 700; text-decoration: none; transition: 0.3s; }
+        .btn-primary { background: #f0642d; color: white; }
+        .btn-primary:hover { background: #d94f1f; }
+        .btn-secondary { background: #2345d8; color: white; }
+        .btn-secondary:hover { background: #1a36a8; }
+        .warning { background: #fff3cd; border-left: 4px solid #f0642d; padding: 15px; margin: 15px 0; font-size: 13px; color: #856404; }
+        .timeline { margin: 20px 0; }
+        .timeline-item { display: flex; margin: 15px 0; }
+        .timeline-icon { width: 30px; height: 30px; border-radius: 50%; background: #f0642d; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; margin-right: 15px; flex-shrink: 0; }
+        .timeline-content { flex: 1; }
+        .timeline-content strong { color: #111; }
+        .timeline-content p { font-size: 13px; color: #666; margin-top: 5px; }
+        .footer { background: #f0f0f0; padding: 20px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #ddd; }
+        .footer-link { color: #2345d8; text-decoration: none; }
+        .signature-section { background: white; padding: 20px; border-radius: 6px; margin: 20px 0; }
+        .value-highlight { font-size: 18px; font-weight: 700; color: #f0642d; }
+        @media (max-width: 600px) {
+            .container { padding: 10px; }
+            .header { padding: 20px; }
+            .btn { display: block; margin: 10px 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="header">
+            <h1>🎉 Carandaí 25</h1>
+            <p>Contrato de Participação em Evento</p>
+        </div>
+
+        <!-- CONTENT -->
+        <div class="content">
+            <!-- GREETING -->
+            <div class="section">
+                <p>Olá <strong>{{BRAND_NAME}}</strong>,</p>
+                <p>Estamos felizes em convidá-lo para participar do <strong>Carandaí 25</strong>! 🎊</p>
+            </div>
+
+            <!-- EVENT INFO -->
+            <div class="section">
+                <h2>📍 Informações do Evento</h2>
+                <div class="event-details">
+                    <dl>
+                        <dt>📅 Datas</dt>
+                        <dd>05 a 08 de novembro de 2026</dd>
+                        
+                        <dt>⏰ Horário</dt>
+                        <dd>13h às 21h</dd>
+                        
+                        <dt>📌 Local</dt>
+                        <dd>Jockey Club Brasileiro - Tribunas B & C<br>Rio de Janeiro/RJ</dd>
+                        
+                        <dt>🏷️ Segmento</dt>
+                        <dd>{{SEGMENT}}</dd>
+                        
+                        <dt>💰 Valor Total</dt>
+                        <dd><span class="value-highlight">R$ {{CONTRACT_VALUE}}</span></dd>
+                    </dl>
+                </div>
+            </div>
+
+            <!-- NEXT STEPS -->
+            <div class="section">
+                <h2>✅ Próximas Etapas</h2>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <div class="timeline-icon">1</div>
+                        <div class="timeline-content">
+                            <strong>Revisar & Assinar Contrato</strong>
+                            <p>Clique no botão abaixo para acessar o contrato na plataforma Contractktor e assinar digitalmente.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-icon">2</div>
+                        <div class="timeline-content">
+                            <strong>Efetuar Pagamento</strong>
+                            <p>Após assinatura, você receberá as instruções de pagamento via boleto ou PIX (até 3 parcelas).</p>
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-icon">3</div>
+                        <div class="timeline-content">
+                            <strong>Enviar Documentação Fiscal</strong>
+                            <p>Prazo: 25/10/2026 - Autorização SEFAZ/RJ e documentação fiscal obrigatória.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-icon">4</div>
+                        <div class="timeline-content">
+                            <strong>Montar seu Espaço</strong>
+                            <p>04/11/2026 - Montagem das estruturas e preparação do espaço.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ACTION BUTTONS -->
+            <div class="button-group">
+                <a href="{{CONTRACTKTOR_LINK}}" class="btn btn-primary">🔐 Assinar Contrato Digitalmente</a>
+            </div>
+
+            <!-- CONTRACT DETAILS -->
+            <div class="section">
+                <h2>📋 Resumo do Contrato</h2>
+                <div class="info-box">
+                    <strong>Contratante:</strong><br>
+                    {{BRAND_NAME}}<br>
+                    CNPJ: {{BRAND_CNPJ}}<br>
+                    <br>
+                    <strong>Contratada:</strong><br>
+                    TR ACCIOLI PONTES COMÉRCIO E EVENTOS LTDA.<br>
+                    CNPJ: 13.624.171/0001-33
+                </div>
+
+                <div class="info-box">
+                    <strong>📦 Mobiliário Incluído:</strong><br>
+                    {{FURNITURE_DESCRIPTION}}
+                </div>
+
+                <div class="info-box">
+                    <strong>💳 Plano de Pagamento:</strong><br>
+                    {{PAYMENT_PLAN}}
+                </div>
+            </div>
+
+            <!-- IMPORTANT INFO -->
+            <div class="warning">
+                <strong>⚠️ Atenção Importante:</strong>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li>O contrato é assinado digitalmente via <strong>www.contractktor.com.br</strong></li>
+                    <li>Documentação fiscal: prazo de <strong>25/10/2026</strong></li>
+                    <li>Falta de pagamento pode resultar em cancelamento da participação</li>
+                    <li>Cancelamentos têm penalidade conforme data: 30%/50%/70%/100%</li>
+                </ul>
+            </div>
+
+            <!-- CONTACT INFO -->
+            <div class="section">
+                <h2>📞 Dúvidas?</h2>
+                <div class="info-box">
+                    <strong>📧 Email Comercial:</strong> carandai25comercial@gmail.com<br>
+                    <strong>📧 Email Financeiro:</strong> financeiro2@carandai25.com<br>
+                    <strong>💬 Portal da Marca:</strong> <a href="https://portal.carandai25.com" class="footer-link">Acesse seu portal</a>
+                </div>
+            </div>
+
+            <!-- SIGNATURE SECTION -->
+            <div class="signature-section">
+                <p><strong>Este é um contrato eletrônico válido.</strong></p>
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    Conforme Lei nº 14.063/2020, a assinatura eletrônica produz os mesmos efeitos da assinatura convencional. O contrato será assinado digitalmente pela plataforma Contractktor, que garante autenticidade e validade legal.
+                </p>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <p><strong>Carandaí 25 | Jockey Club Brasileiro</strong></p>
+            <p>Rio de Janeiro | 05-08 NOV 2026</p>
+            <p style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 10px;">
+                <a href="https://portal.carandai25.com" class="footer-link">Portal da Marca</a> | 
+                <a href="https://carandai25.com.br" class="footer-link">Site Oficial</a>
+            </p>
+            <p style="margin-top: 10px; font-size: 11px;">
+                © 2026 TR ACCIOLI PONTES COMÉRCIO E EVENTOS LTDA. Todos os direitos reservados.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+
