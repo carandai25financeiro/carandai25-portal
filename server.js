@@ -405,7 +405,7 @@ async function api(req,res,url){
   const pathname=url.pathname;
 
   if(pathname==='/api/health' && req.method==='GET'){
-    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.3.0',storage:STORAGE_ROOT});
+    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.4.0',storage:STORAGE_ROOT});
   }
 
   if(pathname==='/api/login' && req.method==='POST'){
