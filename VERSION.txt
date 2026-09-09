@@ -1,4 +1,22 @@
 CARANDAI 25 PORTAL DA MARCA
-Versao 4.3.0 - GitHub Ready / Railway Ready
-Inclui imagens oficiais das estruturas por segmento.
-Login atualizado com a capa do Manual do Expositor do Rio de Janeiro.
+Versao 4.4.0 - GitHub Ready / Railway Ready
+Compatível com: Android, iOS, Windows, macOS, Linux
+
+NOVIDADES V4.4.0:
+- Login page: Corrigido bug de duplicate variable declarations em viewContract()
+- Estrutura: Otimização de imagens (650px max-height com crisp-edges rendering)
+- Cache: 24 horas para imagens PNG/JPG
+- Responsivo: Melhorias mobile (Android/iOS), tablet, desktop (Windows/macOS/Linux)
+
+SISTEMA OPERACIONAL:
+✓ Android 8.0+ (Chrome, Firefox, Samsung Internet)
+✓ iOS 12.0+ (Safari, Chrome)
+✓ Windows 10+ (Edge, Chrome, Firefox)
+✓ macOS 10.13+ (Safari, Chrome, Firefox)
+✓ Linux (Chrome, Firefox, Edge)
+
+REQUISITOS TÉCNICOS:
+- Browser com suporte ES6
+- JavaScript habilitado
+- Cookie/LocalStorage habilitado
+- Conexão HTTPS recomendada
