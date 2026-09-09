@@ -79,6 +79,7 @@
   $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':'profile'));
   modalBackdrop.addEventListener('click',e=>{if(e.target===modalBackdrop)closeModal();});
 
+  $('#passwordToggle').addEventListener('click',e=>{e.preventDefault();const pwd=$('#loginPassword');pwd.type=pwd.type==='password'?'text':'password';});
   function openModal(html){modal.innerHTML=html;modalBackdrop.classList.remove('hidden');$('.modal-close',modal)?.addEventListener('click',closeModal);}
   function closeModal(){modalBackdrop.classList.add('hidden');modal.innerHTML='';}
   function modalHead(title,sub=''){return `<div class="modal-head"><div><span class="kicker">${esc(sub)}</span><h2>${esc(title)}</h2></div><button class="modal-close" aria-label="Fechar">×</button></div>`;}
