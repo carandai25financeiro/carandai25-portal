@@ -75,6 +75,74 @@
     }catch(err){msg.textContent=err.message;}
   });
   $('#logoutButton').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'});}catch{} state.me=null;state.csrf=null;state.data=null;showAuth();closeSidebar();});
+  $('#changePasswordBtn').addEventListener('click', () => openChangePasswordModal());
+  
+  function openChangePasswordModal() {
+    openModal(`
+      ${modalHead('Alterar Senha de Acesso', 'SEGURANÇA')}
+      <form id="changePasswordForm" class="form-grid">
+        <div class="field full">
+          <label>Senha Atual</label>
+          <input type="password" id="currentPassword" required>
+          <small>Digite sua senha atual para confirmar identidade</small>
+        </div>
+        
+        <div class="field full">
+          <label>Nova Senha</label>
+          <input type="password" id="newPassword" required minlength="8">
+          <small>Mínimo 8 caracteres. Use números e caracteres especiais para mais segurança.</small>
+        </div>
+        
+        <div class="field full">
+          <label>Confirmar Nova Senha</label>
+          <input type="password" id="confirmPassword" required minlength="8">
+          <small>Deve ser igual à nova senha acima</small>
+        </div>
+        
+        <div class="field full">
+          <button type="submit" class="btn btn-dark">🔐 Alterar Senha</button>
+        </div>
+      </form>
+    `);
+
+    $('#changePasswordForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const currentPwd = $('#currentPassword').value;
+      const newPwd = $('#newPassword').value;
+      const confirmPwd = $('#confirmPassword').value;
+      
+      // Validações
+      if (newPwd !== confirmPwd) {
+        showError(new Error('As senhas não conferem'));
+        return;
+      }
+      
+      if (newPwd.length < 8) {
+        showError(new Error('Nova senha deve ter no mínimo 8 caracteres'));
+        return;
+      }
+      
+      if (!/[0-9]/.test(newPwd) || !/[!@#$%^&*]/.test(newPwd)) {
+        showError(new Error('Use números e caracteres especiais (!@#$%^&*)'));
+        return;
+      }
+      
+      try {
+        const r = await api('/api/account/change-password', {
+          method: 'POST',
+          body: { currentPassword: currentPwd, newPassword: newPwd }
+        });
+        
+        closeModal();
+        toast('✅ Senha alterada com sucesso!');
+        
+      } catch (err) {
+        showError(err);
+      }
+    });
+  }
+
   $('#menuToggle').addEventListener('click',()=>sidebar.classList.toggle('open'));
   $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':'profile'));
   modalBackdrop.addEventListener('click',e=>{if(e.target===modalBackdrop)closeModal();});
