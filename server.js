@@ -634,7 +634,11 @@ function serveStatic(req,res,url){
   const st=fs.statSync(filePath);
   const base=path.basename(filePath);
   const noCache=new Set(['index.html','app.js','styles.css','sw.js','manifest.json']).has(base);
-  res.writeHead(200,{'Content-Type':mimeByExt(filePath),'Content-Length':st.size,'Cache-Control':noCache?'no-cache':'public, max-age=3600'});
+  const headers={'Content-Type':mimeByExt(filePath),'Content-Length':st.size};
+  if(filePath.endsWith('.png')||filePath.endsWith('.jpg')||filePath.endsWith('.jpeg'))headers['Cache-Control']='public, max-age=86400';
+  else headers['Cache-Control']=noCache?'no-cache':'public, max-age=3600';
+  if(['image/png','image/jpeg'].includes(headers['Content-Type']))headers['Accept-Encoding']='gzip, deflate';
+  res.writeHead(200,headers);
   fs.createReadStream(filePath).pipe(res);
 }
 
