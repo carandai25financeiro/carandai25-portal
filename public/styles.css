@@ -27,10 +27,10 @@ a{color:inherit}
 .kicker{display:block;font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;margin-bottom:16px}
 
 /* LOGIN */
-.auth-screen{min-height:100svh;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(430px,.95fr);background:var(--paper)}
-.auth-art{position:relative;overflow:hidden;background:#f7edc7;display:grid;place-items:center;padding:28px;min-height:100svh;border-right:1px solid var(--ink)}
-.manual-cover-login{display:block;width:100%;height:100%;max-width:100%;max-height:calc(100svh - 56px);object-fit:contain;object-position:center;box-shadow:0 20px 60px rgba(17,17,17,.16)}
-.auth-panel{padding:48px clamp(32px,5vw,78px) 34px;display:flex;flex-direction:column;min-height:100svh}
+.auth-screen{min-height:100svh;display:grid;grid-template-columns:1fr;background:var(--paper)}
+.auth-art{display:none}
+.manual-cover-login{display:none}
+.auth-panel{padding:48px clamp(32px,5vw,78px) 34px;display:flex;flex-direction:column;min-height:100svh;max-width:760px;width:100%;margin:0 auto}
 .auth-copy{margin:auto 0 34px;max-width:560px}
 .auth-copy h1{font-family:"Bodoni Moda","Didot","Times New Roman",Georgia,serif;font-size:clamp(48px,5.2vw,82px);line-height:.92;letter-spacing:-.055em;font-weight:500;margin:0 0 24px}
 .auth-copy h1 em{font-weight:500}
