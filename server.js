@@ -167,7 +167,7 @@ function initSchema(){
 
 const STRUCTURES = {
   'Moda': {
-    image:'/assets/estruturas/estrutura-moda.png?v=2
+    image:'/assets/estruturas/estrutura-moda.png?v=2',
     title:'Estrutura contratada · Moda',
     items:['Arara: 1,80 m de altura','1,70 m de comprimento','0,30 m de largura','1 cadeira'],
     brandResponsibility:['Levar os próprios cabides'],
