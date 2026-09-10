@@ -75,79 +75,10 @@
     }catch(err){msg.textContent=err.message;}
   });
   $('#logoutButton').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'});}catch{} state.me=null;state.csrf=null;state.data=null;showAuth();closeSidebar();});
-  $('#changePasswordBtn').addEventListener('click', () => openChangePasswordModal());
-  
-  function openChangePasswordModal() {
-    openModal(`
-      ${modalHead('Alterar Senha de Acesso', 'SEGURANÇA')}
-      <form id="changePasswordForm" class="form-grid">
-        <div class="field full">
-          <label>Senha Atual</label>
-          <input type="password" id="currentPassword" required>
-          <small>Digite sua senha atual para confirmar identidade</small>
-        </div>
-        
-        <div class="field full">
-          <label>Nova Senha</label>
-          <input type="password" id="newPassword" required minlength="8">
-          <small>Mínimo 8 caracteres. Use números e caracteres especiais para mais segurança.</small>
-        </div>
-        
-        <div class="field full">
-          <label>Confirmar Nova Senha</label>
-          <input type="password" id="confirmPassword" required minlength="8">
-          <small>Deve ser igual à nova senha acima</small>
-        </div>
-        
-        <div class="field full">
-          <button type="submit" class="btn btn-dark">🔐 Alterar Senha</button>
-        </div>
-      </form>
-    `);
-
-    $('#changePasswordForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const currentPwd = $('#currentPassword').value;
-      const newPwd = $('#newPassword').value;
-      const confirmPwd = $('#confirmPassword').value;
-      
-      // Validações
-      if (newPwd !== confirmPwd) {
-        showError(new Error('As senhas não conferem'));
-        return;
-      }
-      
-      if (newPwd.length < 8) {
-        showError(new Error('Nova senha deve ter no mínimo 8 caracteres'));
-        return;
-      }
-      
-      if (!/[0-9]/.test(newPwd) || !/[!@#$%^&*]/.test(newPwd)) {
-        showError(new Error('Use números e caracteres especiais (!@#$%^&*)'));
-        return;
-      }
-      
-      try {
-        const r = await api('/api/account/change-password', {
-          method: 'POST',
-          body: { currentPassword: currentPwd, newPassword: newPwd }
-        });
-        
-        closeModal();
-        toast('✅ Senha alterada com sucesso!');
-        
-      } catch (err) {
-        showError(err);
-      }
-    });
-  }
-
   $('#menuToggle').addEventListener('click',()=>sidebar.classList.toggle('open'));
   $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':'profile'));
   modalBackdrop.addEventListener('click',e=>{if(e.target===modalBackdrop)closeModal();});
 
-  $('#passwordToggle').addEventListener('click',e=>{e.preventDefault();const pwd=$('#loginPassword');pwd.type=pwd.type==='password'?'text':'password';});
   function openModal(html){modal.innerHTML=html;modalBackdrop.classList.remove('hidden');$('.modal-close',modal)?.addEventListener('click',closeModal);}
   function closeModal(){modalBackdrop.classList.add('hidden');modal.innerHTML='';}
   function modalHead(title,sub=''){return `<div class="modal-head"><div><span class="kicker">${esc(sub)}</span><h2>${esc(title)}</h2></div><button class="modal-close" aria-label="Fechar">×</button></div>`;}
@@ -233,8 +164,8 @@
       <div class="note" style="margin-top:18px">A Carandaí 25 não se responsabiliza por objetos deixados no Jockey Club após o período de desmontagem.</div>`;
   }
 
-  function viewContract(){if(state.me.role==='admin'){renderAdminContract();return;}
-    const c=state.data.contract;const b=state.data.brand;
+  function viewContract(){
+    const c=state.data.contract;
     content.innerHTML=`${pageHead('DOCUMENTOS COMERCIAIS','Meu <em>contrato.</em>','O contrato exibido é vinculado exclusivamente ao login desta marca.',statusLabel(c?.status||'pending'),'STATUS')}
       <div class="card"><div class="card-row"><div><span class="label">CONTRATO DA MARCA</span><h3>${c?.file?'Documento cadastrado':'Aguardando documento'}</h3><p>${c?.file?`Arquivo: ${esc(c.file.original_name)} · atualizado em ${fmtDateTime(c.updated_at)}`:'A equipe Comercial ainda não disponibilizou o PDF do contrato neste portal.'}</p></div>${status(c?.status||'pending')}</div>
       <div class="inline-actions" style="margin-top:18px">${c?.file?`<button class="btn btn-dark" id="openContract">Abrir contrato ↗</button>`:''}<a class="btn" href="mailto:carandai25comercial@gmail.com?subject=Carandai%2025%20-%20Contrato%20da%20marca">Falar com Comercial</a></div></div>`;
@@ -344,9 +275,8 @@
   }
 
   function openNewBrand(){
-    openModal(`${modalHead('Cadastrar nova marca','ACESSO INDIVIDUAL')}<form id="newBrandForm" class="form-grid"><div class="field"><label>Nome da marca<input name="name" required></label></div><div class="field"><label>Segmento<select name="segment">${state.admin.structures.map(s=>`<option>${esc(s)}</option>`).join('')}</select></label></div><div class="field"><label>Responsável<input name="contact_name"></label></div><div class="field"><label>E-mail de contato<input name="contact_email" type="email"></label></div><div class="field"><label>Razão social<input name="legal_name"></label></div><div class="field"><label>CNPJ<input name="cnpj"></label></div><div class="field"><label>Telefone<input name="phone"></label></div><div class="field"><label>E-mail de login<input name="login_email" type="email" required></label></div><div class="field full"><label>Senha inicial<input name="password" type="password" minlength="8" required value="Marca@2026"></label><small>Troque a senha padrão antes de colocar o portal em produção.</small></div><div class="field full"><label class="checkbox-field"><input type="checkbox" id="sendContractCheckbox" checked> Enviar contrato por email para a marca</label><input type="hidden" name="send_contract" value="true"></div><div class="field full"><button class="btn btn-dark" type="submit">Criar marca e login</button></div></form>`);
-    $('#sendContractCheckbox').addEventListener('change',e=>{$('#newBrandForm input[name="send_contract"]').value=e.target.checked?'true':'false';});
-    $('#newBrandForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target),body=Object.fromEntries(f.entries());body.send_contract=body.send_contract==='true';try{await api('/api/admin/brands',{method:'POST',body});closeModal();toast(body.send_contract?'Marca cadastrada e contrato enviado por email.':'Marca cadastrada.');await navigate('admin-brands');}catch(err){showError(err)}});
+    openModal(`${modalHead('Cadastrar nova marca','ACESSO INDIVIDUAL')}<form id="newBrandForm" class="form-grid"><div class="field"><label>Nome da marca<input name="name" required></label></div><div class="field"><label>Segmento<select name="segment">${state.admin.structures.map(s=>`<option>${esc(s)}</option>`).join('')}</select></label></div><div class="field"><label>Responsável<input name="contact_name"></label></div><div class="field"><label>E-mail de contato<input name="contact_email" type="email"></label></div><div class="field"><label>Razão social<input name="legal_name"></label></div><div class="field"><label>CNPJ<input name="cnpj"></label></div><div class="field"><label>Telefone<input name="phone"></label></div><div class="field"><label>E-mail de login<input name="login_email" type="email" required></label></div><div class="field full"><label>Senha inicial<input name="password" type="password" minlength="8" required value="Marca@2026"></label><small>Troque a senha padrão antes de colocar o portal em produção.</small></div><div class="field full"><button class="btn btn-dark" type="submit">Criar marca e login</button></div></form>`);
+    $('#newBrandForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target),body=Object.fromEntries(f.entries());try{const created=await api('/api/admin/brands',{method:'POST',body});closeModal();toast('Marca cadastrada. Agora anexe e envie o contrato.');await loadAdminBrand(created.id);state.adminTab='contract';viewAdminBrand();}catch(err){showError(err)}});
   }
 
   function viewAdminPending(){
@@ -383,8 +313,11 @@
 
   function renderAdminContract(){
     const c=state.brandDetail.contract,b=state.brandDetail.brand;
-    adminPanel().innerHTML=`<div class="two-col"><div class="card"><span class="label">CONTRATO ATUAL</span><h3>${c?.file?esc(c.file.original_name):'Sem PDF cadastrado'}</h3><p>Status: ${statusLabel(c?.status||'pending')} · atualizado ${fmtDateTime(c?.updated_at)}</p>${c?.file?`<button class="btn btn-small" id="adminOpenContract">Abrir arquivo</button>`:''}</div><div class="card"><span class="label">PUBLICAR / ATUALIZAR</span><form id="contractForm" class="form-grid"><div class="field full"><label>Status<select name="status"><option value="pending" ${c?.status==='pending'?'selected':''}>Pendente</option><option value="draft" ${c?.status==='draft'?'selected':''}>Rascunho</option><option value="signed" ${c?.status==='signed'?'selected':''}>Assinado</option></select></label></div><div class="field full"><label>Data de assinatura<input type="date" name="signed_at" value="${esc(c?.signed_at?.slice(0,10)||'')}"></label></div><div class="field full"><label>PDF do contrato<input type="file" id="contractFile" accept="application/pdf"></label><small>Se não escolher arquivo, o PDF atual é mantido.</small></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar contrato</button></div></form></div></div>`;
+    const recipient=b.contact_email || state.brandDetail.login?.email || '';
+    const lastSend=c?.emailed_at ? `Último envio: ${fmtDateTime(c.emailed_at)} · ${esc(c.emailed_to||'')}` : 'Ainda não enviado por e-mail.';
+    adminPanel().innerHTML=`<div class="two-col"><div class="card"><span class="label">CONTRATO ATUAL</span><h3>${c?.file?esc(c.file.original_name):'Sem PDF cadastrado'}</h3><p>Status: ${statusLabel(c?.status||'pending')} · atualizado ${fmtDateTime(c?.updated_at)}</p>${c?.file?`<button class="btn btn-small" id="adminOpenContract">Abrir arquivo</button>`:''}<div class="note" style="margin-top:14px">${lastSend}</div>${c?.file?`<div style="margin-top:16px"><label class="mini-label" for="contractEmailTo">ENVIAR PARA</label><input class="search" id="contractEmailTo" type="email" value="${esc(recipient)}" style="width:100%;margin:7px 0 10px"><button class="btn btn-dark" id="sendContractEmail">Enviar contrato por e-mail</button><p style="font-size:11px;color:var(--muted);margin-top:8px">O portal envia o PDF para o e-mail cadastrado e informa que a assinatura será digital. A marca também receberá um e-mail da plataforma Contraktor com o link para assinatura eletrônica.</p></div>`:`<p style="margin-top:14px"><strong>Anexe primeiro o PDF da marca.</strong> Depois o botão de envio por e-mail aparecerá aqui.</p>`}</div><div class="card"><span class="label">PUBLICAR / ATUALIZAR</span><form id="contractForm" class="form-grid"><div class="field full"><label>Status<select name="status"><option value="pending" ${c?.status==='pending'?'selected':''}>Pendente</option><option value="draft" ${c?.status==='draft'?'selected':''}>Rascunho</option><option value="signed" ${c?.status==='signed'?'selected':''}>Assinado</option></select></label></div><div class="field full"><label>Data de assinatura<input type="date" name="signed_at" value="${esc(c?.signed_at?.slice(0,10)||'')}"></label></div><div class="field full"><label>PDF do contrato<input type="file" id="contractFile" accept="application/pdf"></label><small>Se não escolher arquivo, o PDF atual é mantido.</small></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar contrato</button></div></form></div></div>`;
     $('#adminOpenContract')?.addEventListener('click',()=>openFile(c.file.id));
+    $('#sendContractEmail')?.addEventListener('click',async()=>{const to=$('#contractEmailTo').value.trim();if(!to)return toast('Informe o e-mail da marca.');if(!confirm(`Enviar o contrato de ${b.name} para ${to}? O e-mail informará que a assinatura será digital e que a marca receberá o link da Contraktor.`))return;try{const r=await api(`/api/admin/brand/${b.id}/contract/email`,{method:'POST',body:{to}});toast(`Contrato enviado para ${r.to}.`);await loadAdminBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
     $('#contractForm').addEventListener('submit',async e=>{e.preventDefault();try{const fd=new FormData(e.target),body=Object.fromEntries(fd.entries());delete body.file;const f=$('#contractFile').files[0];if(f)body.file=await fileData(f);await api(`/api/admin/brand/${b.id}/contract`,{method:'POST',body});toast('Contrato atualizado.');await loadAdminBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
   }
 
@@ -427,32 +360,3 @@
   boot();
 })();
 
-  // Funções de geração de contrato
-  function generateContractModal(){
-    const b=state.data.brand;
-    const modal_html=`${modalHead('Gerar Contrato','COMERCIAL')}<form id="contractForm" class="form-grid"><div class="field full"><label>Nome da Marca</label><input type="text" value="${esc(b.name)}" disabled></div><div class="field full"><label>CNPJ</label><input type="text" value="${esc(b.cnpj||'')}" disabled></div><div class="field full"><label>Endereço</label><input type="text" value="${esc(b.address||'')}" disabled></div><div class="field full"><label>Nome do Representante</label><input type="text" id="representativeName" value="${esc(b.representative||'')}" required placeholder="Nome completo"></div><div class="field full"><label>Valor Total (R$)</label><input type="number" id="contractValue" value="6500.00" step="0.01" required></div><div class="field full"><label>Parcelas</label><select id="installmentsCount"><option value="1">1 parcela</option><option value="2">2 parcelas</option><option value="3" selected>3 parcelas</option></select></div><div id="paymentsContainer"></div><div class="field full"><button class="btn btn-dark" type="submit">Gerar Contrato</button></div></form>`;
-    openModal(modal_html);
-    $('#installmentsCount').addEventListener('change',renderPaymentFields);
-    renderPaymentFields();
-    $('#contractForm').addEventListener('submit',async e=>{e.preventDefault();try{const contractData={name:b.name,cnpj:b.cnpj,address:b.address,representative:$('#representativeName').value,segment:b.segment||'',contractValue:parseFloat($('#contractValue').value),paymentTerms:getPaymentTerms()};await api('/api/contract/generate',{method:'POST',body:{brandId:b.id,...contractData}});closeModal();toast('Contrato gerado e enviado!');await navigate('contract');}catch(err){showError(err)}});
-  }
-  
-  function renderPaymentFields(){
-    const count=parseInt($('#installmentsCount').value)||1;
-    const container=$('#paymentsContainer');
-    const value=parseFloat($('#contractValue').value)||6500;
-    const perInstallment=(value/count).toFixed(2);
-    container.innerHTML='';
-    for(let i=1;i<=count;i++){const monthsAhead=(i-1)*2;const dueDate=new Date(2026,7,30+monthsAhead);const dueDateStr=String(dueDate.getDate()).padStart(2,'0')+'/'+String(dueDate.getMonth()+1).padStart(2,'0')+'/'+dueDate.getFullYear();container.innerHTML+=`<div class="field full"><label>${i}ª Parcela - Vencimento</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><input type="date" class="due-date" value="${String(dueDate.getFullYear())}-${String(dueDate.getMonth()+1).padStart(2,'0')}-${String(dueDate.getDate()).padStart(2,'0')}" required><select class="payment-method"><option>Boleto</option><option>PIX</option><option selected>Boleto/PIX</option></select></div></div>`;}
-  }
-  
-  function getPaymentTerms(){
-    const count=parseInt($('#installmentsCount').value)||1;
-    const value=parseFloat($('#contractValue').value)||6500;
-    const perInstallment=(value/count).toFixed(2);
-    const terms=[];
-    const dueDates=$$('.due-date');
-    const methods=$$('.payment-method');
-    for(let i=0;i<count;i++){terms.push({dueDate:dueDates[i].value.split('-').reverse().join('/'),amount:parseFloat(perInstallment),method:methods[i].value});}
-    return terms;
-  }
