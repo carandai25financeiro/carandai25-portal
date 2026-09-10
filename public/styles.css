@@ -256,15 +256,82 @@ input[type=file]{max-width:100%}
 }
 
 /* STRUCTURE IMAGES · MANUAL DO EXPOSITOR */
-.structure-image-section{margin:30px 0 24px;border-top:1px solid var(--ink);padding-top:20px}
-.structure-image-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.7fr);gap:30px;align-items:end;margin-bottom:16px}
-.structure-image-head h2{font-family:Georgia,serif;font-style:italic;font-size:clamp(32px,4vw,48px);font-weight:400;letter-spacing:-.035em;line-height:1;margin:6px 0 0}
-.structure-image-head p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
-.structure-image-frame{width:100%;background:#f4efdc;border:1px solid var(--ink);overflow-x:auto;overflow-y:hidden;min-height:450px;max-height:800px;display:flex;align-items:center;justify-content:center;position:relative;padding:20px}
-.structure-image-frame img{display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center;background:#f4efdc;image-rendering:crisp-edges;flex-shrink:0}
-.admin-structure-preview{margin:14px 0 18px;background:#f4efdc;border:1px solid var(--line);overflow:hidden}
-.admin-structure-preview img{display:block;width:100%;max-height:420px;object-fit:contain;object-position:center}
 
+.structure-image-section{
+  margin:30px 0 24px;
+  border-top:1px solid var(--ink);
+  padding-top:20px;
+}
+
+.structure-image-head{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(260px,.7fr);
+  gap:30px;
+  align-items:end;
+  margin-bottom:16px;
+}
+
+.structure-image-head h2{
+  font-family:Georgia,serif;
+  font-style:italic;
+  font-size:clamp(32px,4vw,48px);
+  font-weight:400;
+  letter-spacing:-.035em;
+  line-height:1;
+  margin:6px 0 0;
+}
+
+.structure-image-head p{
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+}
+
+/* FOTO QUE A MARCA VÊ */
+.structure-image-frame{
+  width:100%;
+  height:auto;
+  background:#f4efdc;
+  border:1px solid var(--ink);
+  overflow:visible;
+  display:block;
+  padding:12px;
+}
+
+.structure-image-frame img{
+  display:block;
+  width:100%;
+  height:auto;
+  max-width:100%;
+  max-height:none;
+  object-fit:contain;
+  object-position:center;
+  margin:0 auto;
+  background:#f4efdc;
+}
+
+/* FOTO QUE APARECE NO PAINEL ADMIN */
+.admin-structure-preview{
+  width:100%;
+  height:auto;
+  margin:14px 0 18px;
+  background:#f4efdc;
+  border:1px solid var(--line);
+  overflow:visible;
+  padding:12px;
+}
+
+.admin-structure-preview img{
+  display:block;
+  width:100%;
+  height:auto;
+  max-width:100%;
+  max-height:none;
+  object-fit:contain;
+  object-position:center;
+  margin:0 auto;
+}
 @media(max-width:850px){
   .structure-image-head{grid-template-columns:1fr;gap:8px}
   .structure-image-frame{min-height:300px;max-height:700px}
