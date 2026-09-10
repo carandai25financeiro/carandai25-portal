@@ -1,8 +1,8 @@
 {
   "name": "carandai25-portal-marcas",
-  "version": "4.6.0",
+  "version": "4.7.0",
   "private": true,
-  "description": "Portal operacional multi-marca Carandai 25 - contratos automaticos, arquivo assinado e envio por e-mail",
+  "description": "Portal operacional multi-marca Carandai 25 - contratos automaticos, email, novo portal e troca obrigatoria de senha no primeiro acesso",
   "scripts": {
     "start": "node server.js",
     "reset-demo": "node server.js --reset-demo"

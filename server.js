@@ -119,6 +119,28 @@ function passwordVerify(password, packed){
   } catch { return false; }
 }
 function sha256(s){ return crypto.createHash('sha256').update(s).digest('hex'); }
+function credentialKey(){
+  const secret=textEnv('CREDENTIALS_SECRET') || textEnv('ADMIN_PASSWORD') || 'carandai25-local-dev';
+  return crypto.createHash('sha256').update(`carandai25-credentials|${secret}`).digest();
+}
+function encryptInitialPassword(password){
+  const value=String(password||''); if(!value) return '';
+  const iv=crypto.randomBytes(12);
+  const cipher=crypto.createCipheriv('aes-256-gcm',credentialKey(),iv);
+  const encrypted=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);
+  const tag=cipher.getAuthTag();
+  return `${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+function decryptInitialPassword(packed){
+  try{
+    if(!packed) return '';
+    const [iv64,tag64,data64]=String(packed).split('.');
+    if(!iv64||!tag64||!data64) return '';
+    const decipher=crypto.createDecipheriv('aes-256-gcm',credentialKey(),Buffer.from(iv64,'base64url'));
+    decipher.setAuthTag(Buffer.from(tag64,'base64url'));
+    return Buffer.concat([decipher.update(Buffer.from(data64,'base64url')),decipher.final()]).toString('utf8');
+  }catch{return '';}
+}
 
 function initSchema(){
   db.exec(`
@@ -144,6 +166,8 @@ function initSchema(){
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin','brand')),
+      must_change_password INTEGER NOT NULL DEFAULT 0,
+      initial_password_enc TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY(brand_id) REFERENCES brands(id) ON DELETE CASCADE
     );
@@ -245,6 +269,10 @@ function initSchema(){
   if(!brandCols.has('address')) db.exec("ALTER TABLE brands ADD COLUMN address TEXT DEFAULT ''");
   if(!brandCols.has('representative')) db.exec("ALTER TABLE brands ADD COLUMN representative TEXT DEFAULT ''");
 
+  const userCols = new Set(db.prepare('PRAGMA table_info(users)').all().map(x=>x.name));
+  if(!userCols.has('must_change_password')) db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
+  if(!userCols.has('initial_password_enc')) db.exec('ALTER TABLE users ADD COLUMN initial_password_enc TEXT');
+
   const contractCols = new Set(db.prepare('PRAGMA table_info(contracts)').all().map(x=>x.name));
   const contractMigrations=[
     ['signed_file_id','ALTER TABLE contracts ADD COLUMN signed_file_id TEXT'],
@@ -305,8 +333,9 @@ function createBrand({name, legal_name='', cnpj='', segment='Moda', contact_name
   db.prepare(`INSERT INTO brands(id,name,legal_name,cnpj,segment,contact_name,contact_email,phone,address,representative,status,structure_json,created_at)
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(brandId,name,legal_name,cnpj,segment,contact_name,contact_email,phone,address,representative||contact_name,'active',JSON.stringify(structure),created);
   const userId = uid();
-  db.prepare(`INSERT INTO users(id,brand_id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)`)
-    .run(userId,brandId,contact_name||name,normalizeEmail(login_email||contact_email),passwordHash(password||'Marca@2026'),'brand',created);
+  const initialPassword=String(password||'Marca@2026');
+  db.prepare(`INSERT INTO users(id,brand_id,name,email,password_hash,role,must_change_password,initial_password_enc,created_at) VALUES(?,?,?,?,?,?,?,?,?)`)
+    .run(userId,brandId,contact_name||name,normalizeEmail(login_email||contact_email),passwordHash(initialPassword),'brand',1,encryptInitialPassword(initialPassword),created);
   db.prepare(`INSERT INTO contracts(id,brand_id,status,updated_at) VALUES(?,?,?,?)`).run(uid(),brandId,'pending',created);
   const req = db.prepare(`INSERT INTO requirements(id,brand_id,code,label,status,due_date,updated_at) VALUES(?,?,?,?,?,?,?)`);
   for (const [code,label,due] of DEFAULT_REQUIREMENTS) req.run(uid(),brandId,code,label,'pending',due,created);
@@ -388,16 +417,19 @@ function clearSessionCookie(res){ res.setHeader('Set-Cookie','c25_session=; Http
 function getSession(req){
   const token=parseCookies(req).c25_session;
   if(!token) return null;
-  const row=db.prepare(`SELECT s.id AS session_id,s.csrf,s.expires_at,u.id AS user_id,u.brand_id,u.name,u.email,u.role
+  const row=db.prepare(`SELECT s.id AS session_id,s.csrf,s.expires_at,u.id AS user_id,u.brand_id,u.name,u.email,u.role,u.must_change_password
     FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?`).get(sha256(token));
   if(!row) return null;
   if(new Date(row.expires_at).getTime()<Date.now()){ db.prepare('DELETE FROM sessions WHERE id=?').run(row.session_id); return null; }
   return row;
 }
-function requireAuth(req,res,roles){
+function requireAuth(req,res,roles,opts={}){
   const s=getSession(req);
   if(!s){ json(res,401,{error:'Não autenticado'}); return null; }
   if(roles && !roles.includes(s.role)){ json(res,403,{error:'Acesso não autorizado'}); return null; }
+  if(s.role==='brand' && Number(s.must_change_password||0)===1 && !opts.allowPasswordChange){
+    json(res,428,{error:'Por segurança, altere a senha inicial para continuar.',code:'PASSWORD_CHANGE_REQUIRED'}); return null;
+  }
   return s;
 }
 function verifyCsrf(req,res,s,body){
@@ -518,7 +550,7 @@ async function generateContractForBrand(brandId,termsOverride=null,brandUpdates=
   return {file:fileMeta(newFileId),generated_at:generatedAt,terms};
 }
 async function sendContractEmail({brandId,to}){
-  const brand=db.prepare(`SELECT b.*,u.email AS login_email FROM brands b LEFT JOIN users u ON u.brand_id=b.id AND u.role='brand' WHERE b.id=?`).get(brandId);
+  const brand=db.prepare(`SELECT b.*,u.email AS login_email,u.must_change_password,u.initial_password_enc FROM brands b LEFT JOIN users u ON u.brand_id=b.id AND u.role='brand' WHERE b.id=?`).get(brandId);
   if(!brand) throw Object.assign(new Error('Marca não encontrada'),{status:404});
   const allowed=[normalizeEmail(brand.contact_email),normalizeEmail(brand.login_email)].filter(Boolean);
   const recipient=normalizeEmail(to || brand.contact_email || brand.login_email);
@@ -531,15 +563,45 @@ async function sendContractEmail({brandId,to}){
   const filePath=path.join(UPLOADS,f.stored_name);
   if(!fs.existsSync(filePath)) throw Object.assign(new Error('PDF do contrato não está disponível no armazenamento.'),{status:404});
   const responsible=brand.representative || brand.contact_name || brand.name;
-  const subject=`Contrato de Participação - Carandaí 25 - ${brand.name}`;
-  const html=`<p>Olá, ${htmlEsc(responsible)}.</p>
-    <p>Segue em anexo o <strong>Contrato de Participação no evento Carandaí 25</strong>, referente à marca <strong>${htmlEsc(brand.name)}</strong>.</p>
-    <p>Evento: 05 a 08 de novembro de 2026 - Jockey Club - Tribunas B & C - Rio de Janeiro.</p>
-    <p>Pedimos a conferência dos dados e das condições comerciais do documento.</p>
-    <p><strong>A assinatura do contrato será realizada de forma digital.</strong> A marca receberá um novo e-mail enviado pela plataforma de assinatura <strong>Contraktor</strong>, com o link e as instruções para realizar a assinatura eletrônica.</p>
-    <p>Se o e-mail da Contraktor não aparecer na caixa de entrada, verifique também spam, lixo eletrônico e promoções.</p>
-    <p>O contrato também ficará disponível no Portal da Marca.</p>
-    <p>Atenciosamente,<br><strong>Carandaí 25</strong></p>`;
+  const initialPassword=decryptInitialPassword(brand.initial_password_enc);
+  const credentialPassword = Number(brand.must_change_password||0)===1 && initialPassword
+    ? `<strong>${htmlEsc(initialPassword)}</strong>`
+    : '<em>use a senha pessoal já definida pela marca; para reenviar uma senha temporária, a equipe Carandaí 25 deverá redefini-la no cadastro</em>';
+  const subject=`Contrato + acesso ao Portal da Marca - Carandaí 25 - ${brand.name}`;
+  const html=`
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#1d1714;line-height:1.55;max-width:680px">
+      <p>Olá, ${htmlEsc(responsible)}.</p>
+      <p>Segue em anexo o <strong>Contrato de Participação no evento Carandaí 25</strong>, referente à marca <strong>${htmlEsc(brand.name)}</strong>.</p>
+      <p><strong>Evento:</strong> 05 a 08 de novembro de 2026 · Jockey Club · Tribunas B &amp; C · Rio de Janeiro.</p>
+      <p>Pedimos a conferência dos dados e das condições comerciais do documento.</p>
+
+      <h2 style="font-size:20px;margin:28px 0 8px">Novo Portal da Marca Carandaí 25</h2>
+      <p>Para facilitar a participação no evento, a Carandaí 25 criou uma nova plataforma exclusiva para as marcas expositoras. O portal reúne em um só lugar as principais informações, documentos e canais de atendimento da sua participação.</p>
+      <p>No <strong>Portal da Marca</strong>, você terá acesso a:</p>
+      <ul>
+        <li><strong>Manual do Expositor</strong> e materiais oficiais do evento;</li>
+        <li><strong>Boletos e informações de pagamento</strong> vinculados à sua marca;</li>
+        <li><strong>Área de mensagens</strong> para falar diretamente com Financeiro, Comercial, Logística e Marketing;</li>
+        <li><strong>Contrato da marca</strong> e, após a conclusão da assinatura digital, a via assinada ficará arquivada no portal;</li>
+        <li><strong>Orientações e acompanhamento documental da SEFAZ/RJ</strong>, incluindo os itens relacionados à Autorização de Funcionamento Provisório;</li>
+        <li><strong>Estrutura contratada para o seu segmento</strong>, com medidas e referência visual do mobiliário que será utilizado no evento;</li>
+        <li>Informações operacionais, documentos pendentes e dados específicos da sua participação.</li>
+      </ul>
+
+      <div style="border:1px solid #1d1714;padding:16px 18px;margin:24px 0;background:#f7f3e9">
+        <strong>Seu acesso inicial</strong><br>
+        Portal: <a href="https://portal.carandai25.com/">https://portal.carandai25.com/</a><br>
+        Login: <strong>${htmlEsc(brand.login_email||recipient)}</strong><br>
+        Senha inicial: ${credentialPassword}
+      </div>
+      <p><strong>Por segurança, no primeiro acesso a marca deverá criar uma nova senha pessoal.</strong> Depois da alteração, a senha inicial deixa de ser utilizada.</p>
+
+      <h2 style="font-size:20px;margin:28px 0 8px">Assinatura do contrato</h2>
+      <p><strong>A assinatura será realizada de forma digital.</strong> A marca receberá um novo e-mail enviado pela plataforma de assinatura <strong>Contraktor</strong>, com o link e as instruções para realizar a assinatura eletrônica.</p>
+      <p>Se o e-mail da Contraktor não aparecer na caixa de entrada, verifique também as pastas de spam, lixo eletrônico e promoções.</p>
+      <p>Após a assinatura, a via assinada poderá ficar disponível também no Portal da Marca.</p>
+      <p>Atenciosamente,<br><strong>Carandaí 25</strong></p>
+    </div>`;
   try{
     const delivery=await deliverEmail({to:recipient,subject,html,attachment:{filename:f.original_name||'Contrato_Carandai25.pdf',buffer:fs.readFileSync(filePath),mime:f.mime||'application/pdf'}});
     const sentAt=nowISO();
@@ -611,7 +673,7 @@ async function api(req,res,url){
   const pathname=url.pathname;
 
   if(pathname==='/api/health' && req.method==='GET'){
-    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.6.0',storage:STORAGE_ROOT});
+    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.7.0',storage:STORAGE_ROOT});
   }
 
   if(pathname==='/api/login' && req.method==='POST'){
@@ -630,7 +692,7 @@ async function api(req,res,url){
     db.prepare('INSERT INTO sessions(id,user_id,token_hash,csrf,expires_at,created_at) VALUES(?,?,?,?,?,?)')
       .run(uid(),u.id,sha256(token),csrf,addDaysISO(SESSION_DAYS),nowISO());
     setSessionCookie(res,token,req);
-    return json(res,200,{ok:true,role:u.role,csrf});
+    return json(res,200,{ok:true,role:u.role,csrf,must_change_password:Number(u.must_change_password||0)===1});
   }
 
   if(pathname==='/api/logout' && req.method==='POST'){
@@ -640,9 +702,24 @@ async function api(req,res,url){
   }
 
   if(pathname==='/api/me' && req.method==='GET'){
-    const s=requireAuth(req,res); if(!s)return;
+    const s=requireAuth(req,res,null,{allowPasswordChange:true}); if(!s)return;
     const brand=s.brand_id?db.prepare('SELECT id,name,segment FROM brands WHERE id=?').get(s.brand_id):null;
-    return json(res,200,{user:{id:s.user_id,name:s.name,email:s.email,role:s.role,brand_id:s.brand_id},brand,csrf:s.csrf});
+    return json(res,200,{user:{id:s.user_id,name:s.name,email:s.email,role:s.role,brand_id:s.brand_id,must_change_password:Number(s.must_change_password||0)===1},brand,csrf:s.csrf});
+  }
+
+  if(pathname==='/api/password/change' && req.method==='POST'){
+    const s=requireAuth(req,res,['brand'],{allowPasswordChange:true}); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const current=String(body.current_password||'');
+    const next=String(body.new_password||'');
+    const confirm=String(body.confirm_password||'');
+    if(next.length<8) return json(res,400,{error:'A nova senha deve ter pelo menos 8 caracteres.'});
+    if(next!==confirm) return json(res,400,{error:'A confirmação da nova senha não confere.'});
+    const u=db.prepare('SELECT password_hash FROM users WHERE id=?').get(s.user_id);
+    if(!u || !passwordVerify(current,u.password_hash)) return json(res,400,{error:'A senha atual está incorreta.'});
+    if(passwordVerify(next,u.password_hash)) return json(res,400,{error:'Escolha uma senha diferente da senha atual.'});
+    db.prepare('UPDATE users SET password_hash=?,must_change_password=0,initial_password_enc=NULL WHERE id=?').run(passwordHash(next),s.user_id);
+    return json(res,200,{ok:true});
   }
 
   if(pathname==='/api/dashboard' && req.method==='GET'){
@@ -731,7 +808,7 @@ async function api(req,res,url){
     const s=requireAuth(req,res,['admin']); if(!s)return;
     const id=brandMatch[1];
     const snap=brandSnapshot(id); if(!snap)return json(res,404,{error:'Marca não encontrada'});
-    const login=db.prepare(`SELECT id,name,email FROM users WHERE brand_id=? AND role='brand'`).get(id);
+    const login=db.prepare(`SELECT id,name,email,must_change_password,CASE WHEN initial_password_enc IS NOT NULL AND initial_password_enc<>'' THEN 1 ELSE 0 END AS has_temporary_password FROM users WHERE brand_id=? AND role='brand'`).get(id);
     db.prepare(`UPDATE messages SET read_by_admin=1 WHERE brand_id=? AND sender_role='brand'`).run(id);
     return json(res,200,{...snap,login,csrf:s.csrf,structures:STRUCTURES,email_config:emailStatus()});
   }
@@ -751,7 +828,11 @@ async function api(req,res,url){
     if(body.login_email){
       try{db.prepare(`UPDATE users SET email=?,name=? WHERE brand_id=? AND role='brand'`).run(normalizeEmail(body.login_email),text(body.contact_name||body.name||b.name),id);}catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'E-mail de login já utilizado'});throw e;}
     }
-    if(body.new_password){ if(String(body.new_password).length<8)return json(res,400,{error:'Nova senha deve ter pelo menos 8 caracteres'}); db.prepare(`UPDATE users SET password_hash=? WHERE brand_id=? AND role='brand'`).run(passwordHash(body.new_password),id); }
+    if(body.new_password){
+      const temp=String(body.new_password);
+      if(temp.length<8)return json(res,400,{error:'Nova senha deve ter pelo menos 8 caracteres'});
+      db.prepare(`UPDATE users SET password_hash=?,must_change_password=1,initial_password_enc=? WHERE brand_id=? AND role='brand'`).run(passwordHash(temp),encryptInitialPassword(temp),id);
+    }
     return json(res,200,{ok:true});
   }
   if(brandMatch && req.method==='DELETE'){
@@ -905,7 +986,7 @@ const server=http.createServer(async (req,res)=>{
 });
 
 server.listen(PORT,()=>{
-  console.log(`\nCarandaí 25 · Portal da Marca v4.6`);
+  console.log(`\nCarandaí 25 · Portal da Marca v4.7`);
   console.log(`Acesse: http://localhost:${PORT}`);
   console.log(`Storage: ${STORAGE_ROOT}`);
   if(process.env.NODE_ENV!=='production'){
