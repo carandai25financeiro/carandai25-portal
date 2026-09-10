@@ -1,4 +1,4 @@
-const CACHE='carandai25-shell-v4-6-contract-auto-email';
+const CACHE='carandai25-shell-v4-7-portal-first-access-password';
 const SHELL=[
   '/',
   '/index.html',

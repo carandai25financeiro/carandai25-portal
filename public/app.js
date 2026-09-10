@@ -5,7 +5,7 @@
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
   const state = {
     me:null, csrf:null, data:null, admin:null, brandDetail:null,
-    view:null, selectedSector:'Logística', adminTab:'summary', search:''
+    view:null, selectedSector:'Logística', adminTab:'summary', search:'', passwordChangeRequired:false
   };
 
   const authScreen=$('#authScreen'), portal=$('#portal'), content=$('#content'), sideNav=$('#sideNav'), sidebar=$('#sidebar');
@@ -25,6 +25,16 @@
   function showError(err){toast(err?.message||'Não foi possível concluir a ação.');}
   function percentDone(reqs){if(!reqs?.length)return 0;const done=reqs.filter(r=>['approved','done'].includes(r.status)).length;return Math.round(done*100/reqs.length);}
   function openFile(id){if(id)window.open(`/api/file/${encodeURIComponent(id)}`,'_blank','noopener');}
+  function bindPasswordToggles(root=document){
+    $$('[data-password-toggle]',root).forEach(btn=>{
+      if(btn.dataset.bound==='1')return; btn.dataset.bound='1';
+      btn.addEventListener('click',()=>{
+        const input=document.getElementById(btn.dataset.passwordToggle); if(!input)return;
+        const show=input.type==='password'; input.type=show?'text':'password';
+        btn.textContent=show?'Ocultar':'Ver'; btn.setAttribute('aria-label',show?'Ocultar senha':'Mostrar senha');
+      });
+    });
+  }
 
   async function api(url, opts={}){
     const o={...opts,headers:{...(opts.headers||{})}};
@@ -64,10 +74,13 @@
   async function boot(){
     try{
       const me=await api('/api/me');
-      state.me={...me.user,brand:me.brand};state.csrf=me.csrf;showPortal();setShell();
+      state.me={...me.user,brand:me.brand};state.csrf=me.csrf;state.passwordChangeRequired=!!me.user.must_change_password;showPortal();setShell();
+      if(state.me.role==='brand' && state.passwordChangeRequired){ openPasswordChangeModal(true); return; }
       await navigate(state.me.role==='admin'?'admin-home':'home');
     }catch(e){showAuth();}
   }
+
+  bindPasswordToggles(authScreen);
 
   $('#loginForm').addEventListener('submit',async e=>{
     e.preventDefault();const msg=$('#loginMessage');msg.textContent='';
@@ -81,9 +94,24 @@
   $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':'profile'));
   modalBackdrop.addEventListener('click',e=>{if(e.target===modalBackdrop)closeModal();});
 
-  function openModal(html){modal.innerHTML=html;modalBackdrop.classList.remove('hidden');$('.modal-close',modal)?.addEventListener('click',closeModal);}
-  function closeModal(){modalBackdrop.classList.add('hidden');modal.innerHTML='';}
+  function openModal(html){modal.innerHTML=html;modalBackdrop.classList.remove('hidden');$('.modal-close',modal)?.addEventListener('click',closeModal);bindPasswordToggles(modal);}
+  function closeModal(){if(state.passwordChangeRequired)return;modalBackdrop.classList.add('hidden');modal.innerHTML='';}
+  function forceCloseModal(){modalBackdrop.classList.add('hidden');modal.innerHTML='';}
   function modalHead(title,sub=''){return `<div class="modal-head"><div><span class="kicker">${esc(sub)}</span><h2>${esc(title)}</h2></div><button class="modal-close" aria-label="Fechar">×</button></div>`;}
+  function openPasswordChangeModal(required=false){
+    state.passwordChangeRequired=required || state.passwordChangeRequired;
+    const head=required
+      ? `<div class="modal-head"><div><span class="kicker">PRIMEIRO ACESSO</span><h2>Crie sua nova senha</h2></div></div>`
+      : modalHead('Alterar senha','SEGURANÇA');
+    modal.innerHTML=`${head}<p>${required?'Por segurança, a senha inicial é temporária. Defina agora uma nova senha pessoal para continuar no Portal da Marca.':'Informe sua senha atual e escolha uma nova senha de acesso.'}</p><form id="changePasswordForm" class="form-grid"><div class="field full"><label>Senha atual<div class="password-wrap"><input id="currentPassword" name="current_password" type="password" minlength="8" required autocomplete="current-password"><button type="button" class="password-toggle" data-password-toggle="currentPassword">Ver</button></div></label></div><div class="field full"><label>Nova senha<div class="password-wrap"><input id="newOwnPassword" name="new_password" type="password" minlength="8" required autocomplete="new-password"><button type="button" class="password-toggle" data-password-toggle="newOwnPassword">Ver</button></div></label><small>Mínimo de 8 caracteres.</small></div><div class="field full"><label>Confirmar nova senha<div class="password-wrap"><input id="confirmOwnPassword" name="confirm_password" type="password" minlength="8" required autocomplete="new-password"><button type="button" class="password-toggle" data-password-toggle="confirmOwnPassword">Ver</button></div></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar nova senha e continuar</button></div></form>`;
+    modalBackdrop.classList.remove('hidden'); bindPasswordToggles(modal);
+    if(!required) $('.modal-close',modal)?.addEventListener('click',closeModal);
+    $('#changePasswordForm').addEventListener('submit',async e=>{
+      e.preventDefault(); const body=Object.fromEntries(new FormData(e.target).entries());
+      if(body.new_password!==body.confirm_password)return toast('A confirmação da nova senha não confere.');
+      try{await api('/api/password/change',{method:'POST',body});state.passwordChangeRequired=false;forceCloseModal();toast('Senha alterada com sucesso.');await boot();}catch(err){showError(err)}
+    });
+  }
 
   async function navigate(view, param){
     state.view=view;activateNav(view);closeSidebar();window.scrollTo({top:0,behavior:'smooth'});
@@ -254,7 +282,8 @@
   function viewProfile(){
     const b=state.data.brand;
     content.innerHTML=`${pageHead('MINHA CONTA','Perfil da <em>marca.</em>','Dados associados ao login atual.',b.segment||'—','SEGMENTO')}
-      <div class="two-col"><div class="card"><span class="label">MARCA</span><h3>${esc(b.name)}</h3><div class="rule-list"><div class="rule-row"><div><div class="title">Razão social</div><div class="sub">${esc(b.legal_name||'Não informada')}</div></div></div><div class="rule-row"><div><div class="title">CNPJ</div><div class="sub">${esc(b.cnpj||'Não informado')}</div></div></div><div class="rule-row"><div><div class="title">Segmento</div><div class="sub">${esc(b.segment||'—')}</div></div></div></div></div><div class="card"><span class="label">CONTATO</span><h3>${esc(b.contact_name||state.me.name)}</h3><div class="rule-list"><div class="rule-row"><div><div class="title">E-mail</div><div class="sub">${esc(b.contact_email||state.me.email)}</div></div></div><div class="rule-row"><div><div class="title">Telefone</div><div class="sub">${esc(b.phone||'Não informado')}</div></div></div></div><p>Alterações cadastrais são feitas pela equipe Carandaí 25.</p></div></div>`;
+      <div class="two-col"><div class="card"><span class="label">MARCA</span><h3>${esc(b.name)}</h3><div class="rule-list"><div class="rule-row"><div><div class="title">Razão social</div><div class="sub">${esc(b.legal_name||'Não informada')}</div></div></div><div class="rule-row"><div><div class="title">CNPJ</div><div class="sub">${esc(b.cnpj||'Não informado')}</div></div></div><div class="rule-row"><div><div class="title">Segmento</div><div class="sub">${esc(b.segment||'—')}</div></div></div></div></div><div class="card"><span class="label">CONTATO</span><h3>${esc(b.contact_name||state.me.name)}</h3><div class="rule-list"><div class="rule-row"><div><div class="title">E-mail</div><div class="sub">${esc(b.contact_email||state.me.email)}</div></div></div><div class="rule-row"><div><div class="title">Telefone</div><div class="sub">${esc(b.phone||'Não informado')}</div></div></div></div><p>Alterações cadastrais são feitas pela equipe Carandaí 25.</p></div></div><div class="card" style="margin-top:18px"><span class="label">SEGURANÇA</span><h3>Senha de acesso</h3><p>Você pode alterar sua senha sempre que quiser. No primeiro acesso, a troca da senha temporária é obrigatória.</p><button class="btn btn-dark btn-small" id="changeOwnPassword">Alterar minha senha</button></div>`;
+    $('#changeOwnPassword').addEventListener('click',()=>openPasswordChangeModal(false));
   }
 
   /* ADMIN */
@@ -291,7 +320,7 @@
       <div class="field full"><label>Endereço / sede<input name="address" required placeholder="Rua, número, complemento, bairro, cidade/UF"></label></div>
       <div class="field"><label>Representante no contrato<input name="representative" required></label></div><div class="field"><label>Responsável / contato<input name="contact_name" required></label></div>
       <div class="field"><label>E-mail da marca<input name="contact_email" type="email" required></label></div><div class="field"><label>Telefone<input name="phone"></label></div>
-      <div class="field"><label>E-mail de login<input name="login_email" type="email" required></label></div><div class="field"><label>Senha inicial<input name="password" type="password" minlength="8" required value="Marca@2026"></label></div>
+      <div class="field"><label>E-mail de login<input name="login_email" type="email" required></label></div><div class="field"><label>Senha inicial<div class="password-wrap"><input id="newBrandPassword" name="password" type="password" minlength="8" required value="Marca@2026"><button type="button" class="password-toggle" data-password-toggle="newBrandPassword">Ver</button></div></label><small>Senha temporária: a marca será obrigada a alterá-la no primeiro acesso.</small></div>
       <div class="field full"><span class="mini-label">CONDIÇÕES COMERCIAIS DO CONTRATO</span></div>
       <div class="field"><label>Data do contrato<input name="contract_date" type="date" value="${todayInput()}" required></label></div><div class="field"><label>Valor total do espaço (R$)<input name="contract_total" inputmode="decimal" placeholder="6500,00" required></label></div>
       <div class="field"><label>1ª parcela · vencimento<input name="installment1_due" type="date" required></label></div><div class="field"><label>1ª parcela · valor (R$)<input name="installment1_value" inputmode="decimal" required></label></div>
@@ -330,7 +359,8 @@
 
   function renderAdminProfile(){
     const d=state.brandDetail,b=d.brand;
-    adminPanel().innerHTML=`<form id="profileForm" class="form-grid"><div class="field"><label>Nome da marca<input name="name" value="${esc(b.name)}" required></label></div><div class="field"><label>Segmento<select name="segment">${Object.keys(d.structures).map(s=>`<option ${s===b.segment?'selected':''}>${esc(s)}</option>`).join('')}</select></label></div><div class="field"><label>Razão social<input name="legal_name" value="${esc(b.legal_name)}"></label></div><div class="field"><label>CNPJ<input name="cnpj" value="${esc(b.cnpj)}"></label></div><div class="field full"><label>Endereço / sede<input name="address" value="${esc(b.address||'')}"></label></div><div class="field"><label>Representante no contrato<input name="representative" value="${esc(b.representative||b.contact_name||'')}"></label></div><div class="field"><label>Responsável / contato<input name="contact_name" value="${esc(b.contact_name)}"></label></div><div class="field"><label>E-mail de contato<input name="contact_email" type="email" value="${esc(b.contact_email)}"></label></div><div class="field"><label>Telefone<input name="phone" value="${esc(b.phone)}"></label></div><div class="field"><label>E-mail de login<input name="login_email" type="email" value="${esc(d.login?.email||'')}"></label></div><div class="field"><label>Status<select name="status"><option value="active" ${b.status==='active'?'selected':''}>Ativo</option><option value="inactive" ${b.status==='inactive'?'selected':''}>Inativo</option></select></label></div><div class="field"><label>Nova senha<input name="new_password" type="password" minlength="8" placeholder="Deixe em branco para manter"></label></div><div class="field full"><div class="inline-actions"><button class="btn btn-dark" type="submit">Salvar cadastro</button><button class="btn btn-danger" type="button" id="deleteBrand">Excluir marca</button></div></div></form>`;
+    adminPanel().innerHTML=`<form id="profileForm" class="form-grid"><div class="field"><label>Nome da marca<input name="name" value="${esc(b.name)}" required></label></div><div class="field"><label>Segmento<select name="segment">${Object.keys(d.structures).map(s=>`<option ${s===b.segment?'selected':''}>${esc(s)}</option>`).join('')}</select></label></div><div class="field"><label>Razão social<input name="legal_name" value="${esc(b.legal_name)}"></label></div><div class="field"><label>CNPJ<input name="cnpj" value="${esc(b.cnpj)}"></label></div><div class="field full"><label>Endereço / sede<input name="address" value="${esc(b.address||'')}"></label></div><div class="field"><label>Representante no contrato<input name="representative" value="${esc(b.representative||b.contact_name||'')}"></label></div><div class="field"><label>Responsável / contato<input name="contact_name" value="${esc(b.contact_name)}"></label></div><div class="field"><label>E-mail de contato<input name="contact_email" type="email" value="${esc(b.contact_email)}"></label></div><div class="field"><label>Telefone<input name="phone" value="${esc(b.phone)}"></label></div><div class="field"><label>E-mail de login<input name="login_email" type="email" value="${esc(d.login?.email||'')}"></label></div><div class="field"><label>Status<select name="status"><option value="active" ${b.status==='active'?'selected':''}>Ativo</option><option value="inactive" ${b.status==='inactive'?'selected':''}>Inativo</option></select></label></div><div class="field"><label>Nova senha temporária<div class="password-wrap"><input id="adminTempPassword" name="new_password" type="password" minlength="8" placeholder="Deixe em branco para manter"><button type="button" class="password-toggle" data-password-toggle="adminTempPassword">Ver</button></div></label><small>Ao definir uma nova senha aqui, a marca deverá alterá-la no próximo acesso.</small></div><div class="field full"><div class="inline-actions"><button class="btn btn-dark" type="submit">Salvar cadastro</button><button class="btn btn-danger" type="button" id="deleteBrand">Excluir marca</button></div></div></form>`;
+    bindPasswordToggles(adminPanel());
     $('#deleteBrand').addEventListener('click',async()=>{if(!confirm(`Excluir definitivamente ${b.name}? Contratos, boletos, documentos e mensagens desta marca também serão removidos.`))return;try{await api(`/api/admin/brand/${b.id}`,{method:'DELETE',body:{}});toast('Marca excluída.');state.brandDetail=null;await navigate('admin-brands');}catch(err){showError(err)}});
     $('#profileForm').addEventListener('submit',async e=>{e.preventDefault();const body=Object.fromEntries(new FormData(e.target).entries());if(!body.new_password)delete body.new_password;try{await api(`/api/admin/brand/${b.id}`,{method:'PATCH',body});toast('Cadastro atualizado.');await loadAdminBrand(b.id);renderAdminProfile();}catch(err){showError(err)}});
   }
@@ -365,7 +395,7 @@
       <div class="card"><div class="card-row"><div><span class="label">SERVIÇO DE E-MAIL</span><h3>${esc(emailProvider)}</h3><p>${emailCfg.configured?`Remetente: ${esc(emailCfg.from||'configurado no Railway')}`:esc(emailCfg.hint||'Configure o serviço de e-mail no Railway.')}</p></div>${status(emailCfg.configured?'active':'pending')}</div>
         <div class="note" style="margin-top:14px">${sentInfo}</div>
         ${c.email_message_id?`<p style="font-size:11px;color:var(--muted);margin-top:8px">ID do envio: ${esc(c.email_message_id)}</p>`:''}
-        <div style="margin-top:16px"><label class="mini-label" for="contractEmailTo">E-MAIL CADASTRADO DA MARCA</label><input class="search" id="contractEmailTo" type="email" value="${esc(recipient)}" style="width:100%;margin:7px 0 10px"><div class="inline-actions"><button class="btn btn-dark" id="sendContractEmail" ${!generated?'disabled':''}>Enviar contrato por e-mail</button><button class="btn" id="testContractEmail">Testar e-mail</button></div><p style="font-size:11px;color:var(--muted);margin-top:10px">O e-mail informa que a assinatura é digital e que a marca receberá outro e-mail da plataforma Contraktor com o link para assinatura.</p></div>
+        <div style="margin-top:16px"><label class="mini-label" for="contractEmailTo">E-MAIL CADASTRADO DA MARCA</label><input class="search" id="contractEmailTo" type="email" value="${esc(recipient)}" style="width:100%;margin:7px 0 10px"><div class="note" style="margin:10px 0"><strong>Acesso ao portal:</strong> ${esc(d.login?.email||'sem login cadastrado')} · ${d.login?.has_temporary_password?'senha temporária disponível para incluir no e-mail':d.login?.must_change_password?'senha temporária pendente, mas não recuperável; redefina em Cadastro':'sem senha temporária disponível; a marca usa a senha pessoal já definida'}</div><div class="inline-actions"><button class="btn btn-dark" id="sendContractEmail" ${!generated?'disabled':''}>Enviar contrato por e-mail</button><button class="btn" id="testContractEmail">Testar e-mail</button></div><p style="font-size:11px;color:var(--muted);margin-top:10px">O e-mail apresenta o novo Portal da Marca, inclui login e senha temporária quando disponível, explica que a troca de senha será obrigatória no primeiro acesso e informa sobre a assinatura digital via Contraktor.</p></div>
       </div>`;
     $('#adminOpenGenerated')?.addEventListener('click',()=>openFile(generated?.id));
     $('#adminOpenSigned')?.addEventListener('click',()=>openFile(signed?.id));

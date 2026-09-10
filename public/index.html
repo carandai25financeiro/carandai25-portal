@@ -6,19 +6,17 @@
   <meta name="theme-color" content="#111111" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="C25 Marcas" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="application-name" content="Carandaí 25 | Portal da Marca" />
-  <meta name="msapplication-TileColor" content="#111111" />
-  <meta name="msapplication-config" content="/browserconfig.xml" />
-  <meta name="description" content="Portal operacional das marcas expositoras Carandaí 25. Compatível com Android, iOS, Windows, macOS e Linux." />
   <title>Carandaí 25 | Portal da Marca</title>
+  <meta name="description" content="Portal operacional das marcas expositoras Carandaí 25." />
   <link rel="manifest" href="/manifest.json" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div id="app">
     <section class="auth-screen" id="authScreen">
+      <div class="auth-art">
+        <img class="manual-cover-login" src="/assets/capa-manual-rio.png" alt="Capa do Manual do Expositor Carandaí 25 · Jockey Club Brasileiro · Rio de Janeiro · 05 a 08 de novembro de 2026" />
+      </div>
       <div class="auth-panel">
         <div class="wordmark">CARANDAÍ 25</div>
         <div class="auth-copy">
@@ -28,7 +26,7 @@
         </div>
         <form id="loginForm" class="login-form">
           <label>E-mail de acesso<input type="email" id="loginEmail" autocomplete="username" required placeholder="sua@marca.com" /></label>
-          <label>Senha<div class="password-wrapper"><input type="password" id="loginPassword" autocomplete="current-password" required placeholder="••••••••" /><button type="button" class="password-toggle" id="passwordToggle" aria-label="Mostrar/ocultar senha">👁</button></div></label>
+          <label>Senha<div class="password-wrap"><input type="password" id="loginPassword" autocomplete="current-password" required placeholder="••••••••" /><button type="button" class="password-toggle" data-password-toggle="loginPassword" aria-label="Mostrar senha">Ver</button></div></label>
           <button class="btn btn-dark btn-wide" type="submit">Entrar no portal <span>↗</span></button>
           <div class="form-message" id="loginMessage"></div>
         </form>
@@ -71,7 +69,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script src="/contract-generator.js" defer></script><script src="/app.js" defer></script>
+  <script src="/app.js" defer></script>
 </body>
 </html>
-
