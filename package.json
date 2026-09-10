@@ -8,10 +8,9 @@
     "reset-demo": "node server.js --reset-demo"
   },
   "dependencies": {
-    "nodemailer": "^6.9.16"
+    "nodemailer": "^10.0.3"
   },
   "engines": {
     "node": ">=22.5.0"
   }
 }
-
