@@ -19,6 +19,26 @@
   function fmtMoney(cents){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(cents)||0)/100);}
   function moneyInput(cents){return (Number(cents||0)/100).toFixed(2);}
   function todayInput(){return new Date().toISOString().slice(0,10);}
+  const MAX_CONTRACT_INSTALLMENTS=10;
+  function paymentMethodOptions(selected='boleto'){
+    return [['pix','PIX'],['boleto','Boleto bancário'],['payment_link','Link de pagamento']].map(([v,l])=>`<option value="${v}" ${selected===v?'selected':''}>${l}</option>`).join('');
+  }
+  function installmentCountOptions(selected=1){
+    const n=Math.max(1,Math.min(MAX_CONTRACT_INSTALLMENTS,Number(selected)||1));
+    return Array.from({length:MAX_CONTRACT_INSTALLMENTS},(_,i)=>i+1).map(i=>`<option value="${i}" ${i===n?'selected':''}>${i} ${i===1?'parcela':'parcelas'}</option>`).join('');
+  }
+  function installmentFieldsHtml(installments=[],selectedCount=1){
+    const count=Math.max(1,Math.min(MAX_CONTRACT_INSTALLMENTS,Number(selectedCount)||1));
+    return Array.from({length:MAX_CONTRACT_INSTALLMENTS},(_,i)=>{
+      const p=installments[i]||{}; const n=i+1; const active=n<=count;
+      return `<div class="field ${active?'':'hidden'}" data-installment-field="${n}"><label>${n}ª parcela · vencimento<input name="installment${n}_due" type="date" value="${esc(p.due_date||'')}" ${active?'required':'disabled'}></label></div><div class="field ${active?'':'hidden'}" data-installment-field="${n}"><label>${n}ª parcela · valor (R$)<input name="installment${n}_value" inputmode="decimal" value="${p.amount_cents?moneyInput(p.amount_cents):''}" ${active?'required':'disabled'}></label></div>`;
+    }).join('');
+  }
+  function bindInstallmentCount(form){
+    const select=$('[name="installment_count"]',form); if(!select)return;
+    const apply=()=>{const count=Math.max(1,Math.min(MAX_CONTRACT_INSTALLMENTS,Number(select.value)||1));$$('[data-installment-field]',form).forEach(field=>{const active=Number(field.dataset.installmentField)<=count;field.classList.toggle('hidden',!active);$('input',field).disabled=!active;$('input',field).required=active;});};
+    select.addEventListener('change',apply); apply();
+  }
   function statusLabel(s){return ({pending:'Pendente',received:'Recebido',approved:'Aprovado',done:'Concluído',paid:'Pago',overdue:'Vencido',rejected:'Reprovado',draft:'Rascunho',signed:'Assinado',active:'Ativo',inactive:'Inativo',cancelled:'Cancelado'}[s]||s||'—');}
   function status(s){return `<span class="status ${esc(s)}">${esc(statusLabel(s))}</span>`;}
   function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>toastEl.classList.remove('show'),2800);}
@@ -323,12 +343,12 @@
       <div class="field"><label>E-mail de login<input name="login_email" type="email" required></label></div><div class="field"><label>Senha inicial<div class="password-wrap"><input id="newBrandPassword" name="password" type="password" minlength="8" required value="Marca@2026"><button type="button" class="password-toggle" data-password-toggle="newBrandPassword">Ver</button></div></label><small>Senha temporária: a marca será obrigada a alterá-la no primeiro acesso.</small></div>
       <div class="field full"><span class="mini-label">CONDIÇÕES COMERCIAIS DO CONTRATO</span></div>
       <div class="field"><label>Data do contrato<input name="contract_date" type="date" value="${todayInput()}" required></label></div><div class="field"><label>Valor total do espaço (R$)<input name="contract_total" inputmode="decimal" placeholder="6500,00" required></label></div>
-      <div class="field"><label>1ª parcela · vencimento<input name="installment1_due" type="date" required></label></div><div class="field"><label>1ª parcela · valor (R$)<input name="installment1_value" inputmode="decimal" required></label></div>
-      <div class="field"><label>2ª parcela · vencimento<input name="installment2_due" type="date"></label></div><div class="field"><label>2ª parcela · valor (R$)<input name="installment2_value" inputmode="decimal"></label></div>
-      <div class="field"><label>3ª parcela · vencimento<input name="installment3_due" type="date"></label></div><div class="field"><label>3ª parcela · valor (R$)<input name="installment3_value" inputmode="decimal"></label></div>
-      <div class="field full"><small>Preencha somente as parcelas utilizadas. A soma das parcelas deve ser igual ao valor total do contrato.</small></div>
+      <div class="field"><label>Quantidade de parcelas<select name="installment_count" required>${installmentCountOptions(1)}</select></label><small>Escolha de 1 a 10 parcelas. Os campos serão abertos automaticamente.</small></div><div class="field"><label>Forma de pagamento<select name="payment_method" required>${paymentMethodOptions('boleto')}</select></label><small>PIX, boleto bancário ou link de pagamento.</small></div>
+      <div id="newBrandInstallments" class="field full" style="display:contents">${installmentFieldsHtml([],1)}</div>
+      <div class="field full"><small>A soma dos valores de todas as parcelas deve ser exatamente igual ao valor total do contrato.</small></div>
       <div class="field full"><button class="btn btn-dark" type="submit">Cadastrar marca e gerar contrato</button></div>
     </form>`);
+    bindInstallmentCount($('#newBrandForm'));
     $('#newBrandForm').addEventListener('submit',async e=>{e.preventDefault();const body=Object.fromEntries(new FormData(e.target).entries());try{const created=await api('/api/admin/brands',{method:'POST',body});closeModal();toast('Marca cadastrada e contrato gerado automaticamente.');await loadAdminBrand(created.id);state.adminTab='contract';viewAdminBrand();}catch(err){showError(err)}});
   }
 
@@ -370,7 +390,8 @@
     const generated=c.generated_file||c.file;
     const signed=c.signed_file;
     const inst=Array.isArray(t.installments)?t.installments:[];
-    while(inst.length<3)inst.push({due_date:'',amount_cents:0});
+    const usedCount=Math.max(1,Math.min(MAX_CONTRACT_INSTALLMENTS,Number(t.installment_count)||inst.filter(x=>x?.due_date||Number(x?.amount_cents||0)>0).length||1));
+    while(inst.length<MAX_CONTRACT_INSTALLMENTS)inst.push({due_date:'',amount_cents:0});
     const recipient=b.contact_email || d.login?.email || '';
     const emailCfg=d.email_config||{configured:false,provider:'none'};
     const emailProvider=emailCfg.provider==='resend'?'Resend (HTTPS)':emailCfg.provider==='smtp'?'SMTP':'Não configurado';
@@ -385,10 +406,9 @@
         <div class="field"><label>Razão social / nome empresarial<input name="legal_name" value="${esc(b.legal_name||'')}" required></label></div><div class="field"><label>CNPJ<input name="cnpj" value="${esc(b.cnpj||'')}" required></label></div>
         <div class="field full"><label>Endereço / sede<input name="address" value="${esc(b.address||'')}" required></label></div><div class="field full"><label>Representante no contrato<input name="representative" value="${esc(b.representative||b.contact_name||'')}" required></label></div>
         <div class="field"><label>Data do contrato<input name="contract_date" type="date" value="${esc(t.contract_date||todayInput())}" required></label></div><div class="field"><label>Valor total do espaço (R$)<input name="contract_total" inputmode="decimal" value="${t.total_cents?moneyInput(t.total_cents):''}" required></label></div>
-        <div class="field"><label>1ª parcela · vencimento<input name="installment1_due" type="date" value="${esc(inst[0]?.due_date||'')}" required></label></div><div class="field"><label>1ª parcela · valor (R$)<input name="installment1_value" inputmode="decimal" value="${inst[0]?.amount_cents?moneyInput(inst[0].amount_cents):''}" required></label></div>
-        <div class="field"><label>2ª parcela · vencimento<input name="installment2_due" type="date" value="${esc(inst[1]?.due_date||'')}"></label></div><div class="field"><label>2ª parcela · valor (R$)<input name="installment2_value" inputmode="decimal" value="${inst[1]?.amount_cents?moneyInput(inst[1].amount_cents):''}"></label></div>
-        <div class="field"><label>3ª parcela · vencimento<input name="installment3_due" type="date" value="${esc(inst[2]?.due_date||'')}"></label></div><div class="field"><label>3ª parcela · valor (R$)<input name="installment3_value" inputmode="decimal" value="${inst[2]?.amount_cents?moneyInput(inst[2].amount_cents):''}"></label></div>
-        <div class="field full"><small>Use até 3 parcelas. A soma das parcelas deve ser igual ao valor total. Ao gerar novamente, o PDF anterior para assinatura é substituído; o PDF assinado, se já salvo, é mantido separado.</small></div>
+        <div class="field"><label>Quantidade de parcelas<select name="installment_count" required>${installmentCountOptions(usedCount)}</select></label><small>Escolha de 1 a 10 parcelas. Os campos serão abertos automaticamente.</small></div><div class="field"><label>Forma de pagamento<select name="payment_method" required>${paymentMethodOptions(t.payment_method||'boleto')}</select></label><small>PIX, boleto bancário ou link de pagamento.</small></div>
+        <div id="contractInstallments" class="field full" style="display:contents">${installmentFieldsHtml(inst,usedCount)}</div>
+        <div class="field full"><small>A soma das parcelas deve ser igual ao valor total. Ao gerar novamente, o PDF anterior para assinatura é substituído; o PDF assinado, se já salvo, é mantido separado.</small></div>
         <div class="field full"><button class="btn btn-dark" type="submit">Gerar / atualizar contrato automático</button></div>
       </form></div>
       <div class="section-title"><h2>Enviar contrato por e-mail</h2><p>O PDF gerado acima é anexado ao e-mail da marca.</p></div>
@@ -397,6 +417,7 @@
         ${c.email_message_id?`<p style="font-size:11px;color:var(--muted);margin-top:8px">ID do envio: ${esc(c.email_message_id)}</p>`:''}
         <div style="margin-top:16px"><label class="mini-label" for="contractEmailTo">E-MAIL CADASTRADO DA MARCA</label><input class="search" id="contractEmailTo" type="email" value="${esc(recipient)}" style="width:100%;margin:7px 0 10px"><div class="note" style="margin:10px 0"><strong>Acesso ao portal:</strong> ${esc(d.login?.email||'sem login cadastrado')} · ${d.login?.has_temporary_password?'senha temporária disponível para incluir no e-mail':d.login?.must_change_password?'senha temporária pendente, mas não recuperável; redefina em Cadastro':'sem senha temporária disponível; a marca usa a senha pessoal já definida'}</div><div class="inline-actions"><button class="btn btn-dark" id="sendContractEmail" ${!generated?'disabled':''}>Enviar contrato por e-mail</button><button class="btn" id="testContractEmail">Testar e-mail</button></div><p style="font-size:11px;color:var(--muted);margin-top:10px">O e-mail apresenta o novo Portal da Marca, inclui login e senha temporária quando disponível, explica que a troca de senha será obrigatória no primeiro acesso e informa sobre a assinatura digital via Contraktor.</p></div>
       </div>`;
+    bindInstallmentCount($('#generateContractForm'));
     $('#adminOpenGenerated')?.addEventListener('click',()=>openFile(generated?.id));
     $('#adminOpenSigned')?.addEventListener('click',()=>openFile(signed?.id));
     $('#generateContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());await api(`/api/admin/brand/${b.id}/contract/generate`,{method:'POST',body});toast('Contrato gerado e salvo automaticamente.');await loadAdminBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
