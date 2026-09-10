@@ -115,15 +115,20 @@ function buildContractPdfBuffer({brand, terms}){
       }
       function paymentClause(){
         sectionHeading('CLÁUSULA 12 - DO VALOR E DAS CONDIÇÕES DE PAGAMENTO');
+        const inst=Array.isArray(terms.installments)?terms.installments:[];
+        const count=Math.max(1,Math.min(10,Number(terms.installment_count||inst.length||1)));
+        const numberWords=['','uma','duas','três','quatro','cinco','seis','sete','oito','nove','dez'];
+        const methodLabels={pix:'PIX',boleto:'boleto bancário',payment_link:'link de pagamento'};
+        const method=methodLabels[terms.payment_method]||'boleto bancário';
+        const parcelWord=count===1?'parcela':'parcelas';
         para(`12.1. Pela participação no evento, a CONTRATANTE pagará à CONTRATADA o valor total do espaço locado de: ${centsBRL(terms.total_cents)}.`);
-        para('12.2. O pagamento poderá ser realizado em até 3 (três) parcelas, por boleto bancário ou PIX. As linhas de parcelas não utilizadas poderão permanecer em branco:');
-        ensureSpace(100);
+        para(`12.2. O pagamento será realizado por ${method}, em ${count} (${numberWords[count]}) ${parcelWord}, conforme os vencimentos e valores abaixo:`);
+        ensureSpace((count+1)*22+36);
         const x=doc.page.margins.left;
         const widths=[105,150,pageWidth-255];
         const rowH=22;
         const rows=[['Parcela','Vencimento','Valor']];
-        const inst=Array.isArray(terms.installments)?terms.installments:[];
-        for(let i=0;i<3;i++){
+        for(let i=0;i<count;i++){
           const p=inst[i]||{};
           rows.push([`${i+1}ª parcela`,dateBR(p.due_date),centsBRL(p.amount_cents)]);
         }

@@ -66,18 +66,27 @@ function parseMoneyToCents(v){
   return Number.isFinite(n)?Math.round(n*100):0;
 }
 function defaultContractTerms(){
-  return {contract_date:new Date().toISOString().slice(0,10),total_cents:0,installments:[{due_date:'',amount_cents:0},{due_date:'',amount_cents:0},{due_date:'',amount_cents:0}]};
+  return {contract_date:new Date().toISOString().slice(0,10),total_cents:0,payment_method:'boleto',installment_count:1,installments:[{due_date:'',amount_cents:0}]};
+}
+function normalizePaymentMethod(value){
+  const v=text(value).toLowerCase();
+  return ['pix','boleto','payment_link'].includes(v)?v:'boleto';
 }
 function contractTermsFromBody(body, previous={}){
   const base={...defaultContractTerms(),...(previous||{})};
   const old=Array.isArray(base.installments)?base.installments:[];
-  const installments=[0,1,2].map(i=>({
+  const oldUsed=Math.max(1,old.filter(x=>text(x?.due_date)||Number(x?.amount_cents||0)>0).length);
+  const requested=Number(body.installment_count ?? base.installment_count ?? oldUsed);
+  const installment_count=Math.max(1,Math.min(10,Number.isFinite(requested)?Math.trunc(requested):oldUsed));
+  const installments=Array.from({length:installment_count},(_,i)=>({
     due_date:text(body[`installment${i+1}_due`] ?? old[i]?.due_date ?? ''),
     amount_cents:body[`installment${i+1}_value`]!==undefined?parseMoneyToCents(body[`installment${i+1}_value`]):Number(old[i]?.amount_cents||0)
   }));
   return {
     contract_date:text(body.contract_date ?? base.contract_date) || new Date().toISOString().slice(0,10),
     total_cents:body.contract_total!==undefined?parseMoneyToCents(body.contract_total):Number(base.total_cents||0),
+    payment_method:normalizePaymentMethod(body.payment_method ?? base.payment_method),
+    installment_count,
     installments
   };
 }
@@ -91,16 +100,16 @@ function validateContractDraft(brand,terms){
   if(missing.length) return `Preencha os dados obrigatórios do contrato: ${missing.join(', ')}.`;
   if(!text(terms?.contract_date)) return 'Informe a data do contrato.';
   if(Number(terms?.total_cents||0)<=0) return 'Informe o valor total do contrato.';
+  if(!['pix','boleto','payment_link'].includes(text(terms?.payment_method))) return 'Escolha a forma de pagamento: PIX, boleto bancário ou link de pagamento.';
+  const count=Math.max(1,Math.min(10,Number(terms?.installment_count||0)));
   const inst=Array.isArray(terms?.installments)?terms.installments:[];
-  let used=0,sum=0;
-  for(let i=0;i<3;i++){
+  if(inst.length!==count) return 'A quantidade de parcelas informada não confere com os vencimentos cadastrados.';
+  let sum=0;
+  for(let i=0;i<count;i++){
     const row=inst[i]||{}; const due=text(row.due_date); const amount=Number(row.amount_cents||0);
-    if(due || amount>0){
-      if(!due || amount<=0) return `Preencha vencimento e valor da ${i+1}ª parcela, ou deixe os dois campos em branco.`;
-      used++; sum+=amount;
-    }
+    if(!due || amount<=0) return `Preencha o vencimento e o valor da ${i+1}ª parcela.`;
+    sum+=amount;
   }
-  if(!used) return 'Cadastre pelo menos uma parcela do contrato.';
   if(sum!==Number(terms.total_cents||0)) return `A soma das parcelas (${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(sum/100)}) deve ser igual ao valor total (${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(terms.total_cents||0)/100)}).`;
   return '';
 }
@@ -673,7 +682,7 @@ async function api(req,res,url){
   const pathname=url.pathname;
 
   if(pathname==='/api/health' && req.method==='GET'){
-    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.7.0',storage:STORAGE_ROOT});
+    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.8.0',storage:STORAGE_ROOT});
   }
 
   if(pathname==='/api/login' && req.method==='POST'){
@@ -986,7 +995,7 @@ const server=http.createServer(async (req,res)=>{
 });
 
 server.listen(PORT,()=>{
-  console.log(`\nCarandaí 25 · Portal da Marca v4.7`);
+  console.log(`\nCarandaí 25 · Portal da Marca v4.8`);
   console.log(`Acesse: http://localhost:${PORT}`);
   console.log(`Storage: ${STORAGE_ROOT}`);
   if(process.env.NODE_ENV!=='production'){
