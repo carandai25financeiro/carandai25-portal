@@ -167,28 +167,28 @@ function initSchema(){
 
 const STRUCTURES = {
   'Moda': {
-    image:'/assets/estruturas/estrutura-moda.png',
+    image:'/assets/estruturas/estrutura-moda.png?v=2
     title:'Estrutura contratada · Moda',
     items:['Arara: 1,80 m de altura','1,70 m de comprimento','0,30 m de largura','1 cadeira'],
     brandResponsibility:['Levar os próprios cabides'],
     note:'A disposição final poderá variar conforme o mix e o layout geral do evento.'
   },
   'Bem-Estar / Decoração': {
-    image:'/assets/estruturas/estrutura-bem-estar-decoracao.png',
+    image:'/assets/estruturas/estrutura-bem-estar-decoracao.png?v=2',
     title:'Estrutura contratada · Bem-Estar / Decoração',
     items:['Estante: 2,00 m de altura','1,50 m de comprimento','0,50 m de largura','5 prateleiras de 0,35 m','Aparador conforme contratação','1 cadeira'],
     brandResponsibility:[],
     note:'A posição final da marca é informada pela produção no momento da montagem. Atenção: na página 8 do manual, o texto informa 0,45 m de altura para o aparador, enquanto o desenho indica 0,80 m; confirme a medida final com a Logística.'
   },
   'Bolsas e Sapatos': {
-    image:'/assets/estruturas/estrutura-bolsas-sapatos.png',
+    image:'/assets/estruturas/estrutura-bolsas-sapatos.png?v=2',
     title:'Estrutura contratada · Bolsas e Sapatos',
     items:['Estante: 1,80 m de altura','2,30 m de comprimento','0,30 m de largura','5 prateleiras de 0,35 m','1 cadeira'],
     brandResponsibility:[],
     note:'Organize o mix exposto para manter circulação, visibilidade da marca e reposição rápida.'
   },
   'Acessórios': {
-    image:'/assets/estruturas/estrutura-acessorios.png',
+    image:'/assets/estruturas/estrutura-acessorios.png?v=2',
     title:'Estrutura contratada · Acessórios',
     items:['Mesa: 1,60 m x 0,80 m','1 cadeira'],
     brandResponsibility:['Levar displays e suportes adequados','Levar embalagens próprias para joias e acessórios'],
