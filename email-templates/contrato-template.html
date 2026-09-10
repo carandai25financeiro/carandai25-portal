@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contrato de Participação - Carandaí 25</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
+        .wrapper { background: #f5f5f5; padding: 20px; }
+        .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .header { background: linear-gradient(135deg, #111111 0%, #2c2c2c 100%); color: white; padding: 32px 24px; text-align: center; }
+        .header h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+        .header p { font-size: 14px; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.5px; }
+        .content { padding: 32px 24px; }
+        .section { margin: 24px 0; }
+        .section h2 { font-size: 16px; font-weight: 700; color: #111; margin-bottom: 12px; border-bottom: 2px solid #f0642d; padding-bottom: 8px; }
+        .info-box { background: #f8f8f8; border-left: 4px solid #f0642d; padding: 15px; margin: 12px 0; font-size: 14px; border-radius: 4px; }
+        .info-box strong { color: #111; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .info-grid .info-box { margin: 0; }
+        .event-details dt { font-weight: 700; color: #111; margin-top: 10px; }
+        .event-details dd { margin-left: 20px; color: #666; margin-bottom: 8px; }
+        .button-group { text-align: center; margin: 28px 0; }
+        .btn { display: inline-block; padding: 14px 28px; margin: 0 8px 10px; border-radius: 4px; font-size: 14px; font-weight: 700; text-decoration: none; }
+        .btn-primary { background: #f0642d; color: #ffffff; }
+        .btn-secondary { background: #2345d8; color: #ffffff; }
+        .warning { background: #fff3cd; border-left: 4px solid #f0642d; padding: 15px; margin: 15px 0; font-size: 13px; color: #856404; border-radius: 4px; }
+        .footer { background: #111111; color: #ccc; padding: 24px; text-align: center; font-size: 12px; }
+        .footer a { color: #f0642d; text-decoration: none; }
+        .footer p { margin: 4px 0; }
+        @media (max-width: 600px) {
+            .content { padding: 20px; }
+            .info-grid { grid-template-columns: 1fr; }
+            .btn { display: block; margin: 8px 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <!-- HEADER -->
+            <div class="header">
+                <h1>🎉 Carandaí 25</h1>
+                <p>Contrato de Participação em Evento</p>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="content">
+                <!-- GREETING -->
+                <div class="section">
+                    <p>Olá <strong>{{BRAND_CONTACT}}</strong>,</p>
+                    <p>Segue abaixo o contrato de participação da marca <strong>{{BRAND_NAME}}</strong> no <strong>Carandaí 25</strong>. Confira os dados e siga as instruções para assinatura digital.</p>
+                </div>
+
+                <!-- BRAND INFO -->
+                <div class="section">
+                    <h2>🏷️ Dados da Marca</h2>
+                    <div class="info-grid">
+                        <div class="info-box">
+                            <strong>Nome Fantasia</strong><br>{{BRAND_NAME}}
+                        </div>
+                        <div class="info-box">
+                            <strong>Razão Social</strong><br>{{BRAND_LEGAL_NAME}}
+                        </div>
+                        <div class="info-box">
+                            <strong>CNPJ</strong><br>{{BRAND_CNPJ}}
+                        </div>
+                        <div class="info-box">
+                            <strong>Segmento</strong><br>{{BRAND_SEGMENT}}
+                        </div>
+                        <div class="info-box">
+                            <strong>Contato</strong><br>{{BRAND_CONTACT}}
+                        </div>
+                        <div class="info-box">
+                            <strong>E-mail de Contato</strong><br>{{BRAND_CONTACT_EMAIL}}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- EVENT INFO -->
+                <div class="section">
+                    <h2>📍 Informações do Evento</h2>
+                    <div class="info-box event-details">
+                        <dl>
+                            <dt>📅 Datas</dt>
+                            <dd>05 a 08 de novembro de 2026</dd>
+
+                            <dt>⏰ Horário</dt>
+                            <dd>13h às 21h</dd>
+
+                            <dt>📌 Local</dt>
+                            <dd>Jockey Club Brasileiro - Tribunas B & C<br>Rio de Janeiro/RJ</dd>
+                        </dl>
+                    </div>
+                </div>
+
+                <!-- STRUCTURE -->
+                <div class="section">
+                    <h2>🏗️ Estrutura Contratada</h2>
+                    <div class="info-box">
+                        {{STRUCTURE_DESCRIPTION}}
+                    </div>
+                </div>
+
+                <!-- PAYMENT -->
+                <div class="section">
+                    <h2>💳 Condições de Pagamento</h2>
+                    <div class="info-box">
+                        Pagamento parcelado em até 3 vezes via boleto bancário ou PIX. As parcelas e vencimentos serão enviados pelo setor financeiro após a assinatura do contrato.
+                    </div>
+                </div>
+
+                <!-- ACTION BUTTONS -->
+                <div class="button-group">
+                    <a href="https://portal.carandai25.com" class="btn btn-primary">🔐 Acessar Portal da Marca</a>
+                    <a href="https://portal.carandai25.com/docs" class="btn btn-secondary">📄 Ver Documentos</a>
+                </div>
+
+                <!-- IMPORTANT INFO -->
+                <div class="warning">
+                    <strong>⚠️ Atenção Importante:</strong>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li>O contrato é assinado digitalmente via <strong>www.contractktor.com.br</strong></li>
+                        <li>Documentação fiscal obrigatória: prazo de <strong>25/10/2026</strong></li>
+                        <li>Falta de pagamento pode resultar em cancelamento da participação</li>
+                    </ul>
+                </div>
+
+                <!-- CONTACT -->
+                <div class="section">
+                    <h2>📞 Dúvidas?</h2>
+                    <div class="info-box">
+                        <strong>📧 Email Comercial:</strong> carandai25comercial@gmail.com<br>
+                        <strong>📧 Email Financeiro:</strong> financeiro2@carandai25.com<br>
+                        <strong>💬 Portal da Marca:</strong> <a href="https://portal.carandai25.com">Acesse seu portal</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FOOTER -->
+            <div class="footer">
+                <p><strong>Carandaí 25 | Jockey Club Brasileiro</strong></p>
+                <p>Rio de Janeiro | 05-08 NOV 2026</p>
+                <p style="margin-top: 10px;">Documento gerado em {{DATE}}</p>
+                <p style="margin-top: 10px; border-top: 1px solid #333; padding-top: 10px;">
+                    <a href="https://portal.carandai25.com">Portal da Marca</a> |
+                    <a href="https://carandai25.com.br">Site Oficial</a>
+                </p>
+                <p style="margin-top: 10px; font-size: 11px;">
+                    © 2026 TR ACCIOLI PONTES COMÉRCIO E EVENTOS LTDA. Todos os direitos reservados.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

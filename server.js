@@ -56,6 +56,93 @@ function passwordVerify(password, packed){
 }
 function sha256(s){ return crypto.createHash('sha256').update(s).digest('hex'); }
 
+// ============================================================================
+// EMAIL - Envio de e-mail (estrutura pronta para Nodemailer/SMTP)
+// ============================================================================
+// Variáveis de ambiente necessárias para produção:
+//   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM_EMAIL, SMTP_FROM_NAME
+//
+// Para habilitar o envio real, instale 'nodemailer' (npm i nodemailer) e
+// descomente o bloco de transporte abaixo.
+async function sendEmail(to, subject, htmlBody){
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const fromEmail = process.env.SMTP_FROM_EMAIL || 'carandai25comercial@gmail.com';
+  const fromName = process.env.SMTP_FROM_NAME || 'Carandaí 25';
+
+  if(!smtpHost || !smtpUser || !smtpPass){
+    console.log('----------------------------------------------------------------');
+    console.log('[sendEmail] SMTP não configurado. Simulando envio de e-mail:');
+    console.log(`  De: ${fromName} <${fromEmail}>`);
+    console.log(`  Para: ${to}`);
+    console.log(`  Assunto: ${subject}`);
+    console.log(`  Corpo (HTML) length: ${String(htmlBody||'').length} caracteres`);
+    console.log('----------------------------------------------------------------');
+    return { ok:true, simulated:true };
+  }
+
+  try{
+    // Implementação real com Nodemailer (descomentar após "npm i nodemailer"):
+    //
+    // const nodemailer = require('nodemailer');
+    // const transporter = nodemailer.createTransport({
+    //   host: smtpHost,
+    //   port: Number(smtpPort||587),
+    //   secure: Number(smtpPort)===465,
+    //   auth: { user: smtpUser, pass: smtpPass }
+    // });
+    // const info = await transporter.sendMail({
+    //   from: `"${fromName}" <${fromEmail}>`,
+    //   to,
+    //   subject,
+    //   html: htmlBody
+    // });
+    // console.log(`[sendEmail] E-mail enviado: ${info.messageId}`);
+    // return { ok:true, messageId: info.messageId };
+
+    console.log(`[sendEmail] Configuração SMTP detectada, mas Nodemailer não está instalado. Envio não realizado para: ${to}`);
+    return { ok:false, error:'Nodemailer não configurado' };
+  }catch(err){
+    console.error('[sendEmail] Erro ao enviar e-mail:', err);
+    return { ok:false, error:err.message };
+  }
+}
+
+// Substitui as variáveis do template de contrato pelos dados reais da marca
+function formatContractEmail(brand, structure){
+  let template;
+  try{
+    template = fs.readFileSync(path.join(ROOT,'email-templates','contrato-template.html'),'utf8');
+  }catch(err){
+    console.error('[formatContractEmail] Não foi possível ler o template:', err);
+    template = '<p>Contrato de participação - {{BRAND_NAME}}</p>';
+  }
+
+  const structureDescription = describeStructureForEmail(structure);
+
+  return template
+    .replace(/{{BRAND_NAME}}/g, brand.name || 'Marca')
+    .replace(/{{BRAND_CONTACT}}/g, brand.contact_name || brand.name || 'Contato')
+    .replace(/{{BRAND_LEGAL_NAME}}/g, brand.legal_name || '—')
+    .replace(/{{BRAND_CNPJ}}/g, brand.cnpj || '—')
+    .replace(/{{BRAND_SEGMENT}}/g, brand.segment || 'Moda')
+    .replace(/{{BRAND_CONTACT_EMAIL}}/g, brand.contact_email || brand.login_email || '—')
+    .replace(/{{STRUCTURE_DESCRIPTION}}/g, structureDescription)
+    .replace(/{{DATE}}/g, new Date().toLocaleDateString('pt-BR'));
+}
+
+function describeStructureForEmail(structure){
+  if(!structure) return 'Estrutura conforme segmento contratado.';
+  const title = structure.title || 'Estrutura contratada';
+  const items = Array.isArray(structure.items) && structure.items.length
+    ? `<ul style="margin-left:20px;">${structure.items.map(i=>`<li>${i}</li>`).join('')}</ul>`
+    : '';
+  const note = structure.note ? `<p style="margin-top:8px;color:#666;font-size:13px;">${structure.note}</p>` : '';
+  return `<strong>${title}</strong>${items}${note}`;
+}
+
 function initSchema(){
   db.exec(`
     CREATE TABLE IF NOT EXISTS brands (
@@ -507,6 +594,15 @@ async function api(req,res,url){
     if(!text(body.name) || !normalizeEmail(body.login_email) || String(body.password||'').length<8) return json(res,400,{error:'Nome, e-mail de login e senha (mín. 8 caracteres) são obrigatórios'});
     try{
       const id=createBrand({name:text(body.name),legal_name:text(body.legal_name),cnpj:text(body.cnpj),segment:text(body.segment)||'Moda',contact_name:text(body.contact_name),contact_email:text(body.contact_email),phone:text(body.phone),login_email:normalizeEmail(body.login_email),password:String(body.password)});
+      if(body.send_contract===true){
+        try{
+          const createdBrand=db.prepare('SELECT * FROM brands WHERE id=?').get(id);
+          const structure=safeJson(createdBrand.structure_json,{});
+          const loginEmail=normalizeEmail(body.login_email);
+          const html=formatContractEmail({...createdBrand,login_email:loginEmail},structure);
+          await sendEmail(loginEmail,'Contrato de Participação - Carandaí 25',html);
+        }catch(mailErr){ console.error('[admin/brands] Falha ao enviar contrato por e-mail:',mailErr); }
+      }
       return json(res,201,{ok:true,id});
     }catch(e){ if(String(e.message).includes('UNIQUE')) return json(res,409,{error:'Este e-mail já está em uso'}); throw e; }
   }

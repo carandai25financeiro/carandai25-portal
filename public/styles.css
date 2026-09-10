@@ -185,6 +185,7 @@ input[type=file]{max-width:100%}
 .counter{text-align:center;font-family:Georgia,serif;font-size:20px}
 .admin-tabs{display:flex;gap:0;border-bottom:1px solid var(--ink);overflow:auto;margin:22px 0 18px}.admin-tab{border:0;background:transparent;padding:12px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;font-weight:800;white-space:nowrap}.admin-tab.active{background:var(--ink);color:var(--paper)}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:grid;gap:7px}.field.full{grid-column:1/-1}.field textarea{min-height:100px;resize:vertical}.field small{color:var(--muted);font-size:10px;line-height:1.35}
+.checkbox-field{display:flex!important;flex-direction:row;align-items:center;gap:9px;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:none}.checkbox-field input{width:auto;padding:0}
 .admin-panel{border-top:1px solid var(--ink);padding-top:18px}
 
 /* MODAL / TOAST */
