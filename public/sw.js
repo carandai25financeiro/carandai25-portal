@@ -1,4 +1,4 @@
-const CACHE='carandai25-shell-v4-3-structures-v2';
+const CACHE='carandai25-shell-v4-5-email-contract-contraktor';
 const SHELL=[
   '/',
   '/index.html',
