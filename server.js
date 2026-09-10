@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const { DatabaseSync } = require('node:sqlite');
 
 const ROOT = __dirname;
@@ -13,6 +14,15 @@ const DATA = path.join(STORAGE_ROOT, 'data');
 const UPLOADS = path.join(STORAGE_ROOT, 'uploads');
 const DB_PATH = path.join(DATA, 'portal.db');
 const PORT = Number(process.env.PORT || 3000);
+
+const SMTP_HOST = textEnv('SMTP_HOST');
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = textEnv('SMTP_USER');
+const SMTP_PASS = textEnv('SMTP_PASS');
+const SMTP_FROM = textEnv('SMTP_FROM') || SMTP_USER;
+const SMTP_SECURE = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || SMTP_PORT === 465;
+
+function textEnv(name){ return String(process.env[name] || '').trim(); }
 
 if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_PASSWORD) {
   console.error('ERRO: defina ADMIN_PASSWORD no ambiente de producao antes de iniciar.');
@@ -38,6 +48,8 @@ function addDaysISO(days){ return new Date(Date.now()+days*86400000).toISOString
 function uid(){ return crypto.randomUUID(); }
 function normalizeEmail(v){ return String(v||'').trim().toLowerCase(); }
 function text(v){ return String(v ?? '').trim(); }
+function validEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(v)); }
+function htmlEsc(v){ return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c])); }
 function safeJson(v, fallback){ try { return JSON.parse(v); } catch { return fallback; } }
 function moneyBR(cents){ return Number(cents||0); }
 
@@ -55,93 +67,6 @@ function passwordVerify(password, packed){
   } catch { return false; }
 }
 function sha256(s){ return crypto.createHash('sha256').update(s).digest('hex'); }
-
-// ============================================================================
-// EMAIL - Envio de e-mail (estrutura pronta para Nodemailer/SMTP)
-// ============================================================================
-// Variáveis de ambiente necessárias para produção:
-//   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM_EMAIL, SMTP_FROM_NAME
-//
-// Para habilitar o envio real, instale 'nodemailer' (npm i nodemailer) e
-// descomente o bloco de transporte abaixo.
-async function sendEmail(to, subject, htmlBody){
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
-  const fromEmail = process.env.SMTP_FROM_EMAIL || 'carandai25comercial@gmail.com';
-  const fromName = process.env.SMTP_FROM_NAME || 'Carandaí 25';
-
-  if(!smtpHost || !smtpUser || !smtpPass){
-    console.log('----------------------------------------------------------------');
-    console.log('[sendEmail] SMTP não configurado. Simulando envio de e-mail:');
-    console.log(`  De: ${fromName} <${fromEmail}>`);
-    console.log(`  Para: ${to}`);
-    console.log(`  Assunto: ${subject}`);
-    console.log(`  Corpo (HTML) length: ${String(htmlBody||'').length} caracteres`);
-    console.log('----------------------------------------------------------------');
-    return { ok:true, simulated:true };
-  }
-
-  try{
-    // Implementação real com Nodemailer (descomentar após "npm i nodemailer"):
-    //
-    // const nodemailer = require('nodemailer');
-    // const transporter = nodemailer.createTransport({
-    //   host: smtpHost,
-    //   port: Number(smtpPort||587),
-    //   secure: Number(smtpPort)===465,
-    //   auth: { user: smtpUser, pass: smtpPass }
-    // });
-    // const info = await transporter.sendMail({
-    //   from: `"${fromName}" <${fromEmail}>`,
-    //   to,
-    //   subject,
-    //   html: htmlBody
-    // });
-    // console.log(`[sendEmail] E-mail enviado: ${info.messageId}`);
-    // return { ok:true, messageId: info.messageId };
-
-    console.log(`[sendEmail] Configuração SMTP detectada, mas Nodemailer não está instalado. Envio não realizado para: ${to}`);
-    return { ok:false, error:'Nodemailer não configurado' };
-  }catch(err){
-    console.error('[sendEmail] Erro ao enviar e-mail:', err);
-    return { ok:false, error:err.message };
-  }
-}
-
-// Substitui as variáveis do template de contrato pelos dados reais da marca
-function formatContractEmail(brand, structure){
-  let template;
-  try{
-    template = fs.readFileSync(path.join(ROOT,'email-templates','contrato-template.html'),'utf8');
-  }catch(err){
-    console.error('[formatContractEmail] Não foi possível ler o template:', err);
-    template = '<p>Contrato de participação - {{BRAND_NAME}}</p>';
-  }
-
-  const structureDescription = describeStructureForEmail(structure);
-
-  return template
-    .replace(/{{BRAND_NAME}}/g, brand.name || 'Marca')
-    .replace(/{{BRAND_CONTACT}}/g, brand.contact_name || brand.name || 'Contato')
-    .replace(/{{BRAND_LEGAL_NAME}}/g, brand.legal_name || '—')
-    .replace(/{{BRAND_CNPJ}}/g, brand.cnpj || '—')
-    .replace(/{{BRAND_SEGMENT}}/g, brand.segment || 'Moda')
-    .replace(/{{BRAND_CONTACT_EMAIL}}/g, brand.contact_email || brand.login_email || '—')
-    .replace(/{{STRUCTURE_DESCRIPTION}}/g, structureDescription)
-    .replace(/{{DATE}}/g, new Date().toLocaleDateString('pt-BR'));
-}
-
-function describeStructureForEmail(structure){
-  if(!structure) return 'Estrutura conforme segmento contratado.';
-  const title = structure.title || 'Estrutura contratada';
-  const items = Array.isArray(structure.items) && structure.items.length
-    ? `<ul style="margin-left:20px;">${structure.items.map(i=>`<li>${i}</li>`).join('')}</ul>`
-    : '';
-  const note = structure.note ? `<p style="margin-top:8px;color:#666;font-size:13px;">${structure.note}</p>` : '';
-  return `<strong>${title}</strong>${items}${note}`;
-}
 
 function initSchema(){
   db.exec(`
@@ -194,6 +119,8 @@ function initSchema(){
       status TEXT NOT NULL DEFAULT 'pending',
       file_id TEXT,
       signed_at TEXT,
+      emailed_at TEXT,
+      emailed_to TEXT,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(brand_id) REFERENCES brands(id) ON DELETE CASCADE,
       FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE SET NULL
@@ -250,32 +177,37 @@ function initSchema(){
     CREATE INDEX IF NOT EXISTS idx_req_brand ON requirements(brand_id);
     CREATE INDEX IF NOT EXISTS idx_msg_brand ON messages(brand_id);
   `);
+
+  // Migração segura para bancos já existentes no Railway.
+  const contractCols = new Set(db.prepare('PRAGMA table_info(contracts)').all().map(x=>x.name));
+  if(!contractCols.has('emailed_at')) db.exec('ALTER TABLE contracts ADD COLUMN emailed_at TEXT');
+  if(!contractCols.has('emailed_to')) db.exec('ALTER TABLE contracts ADD COLUMN emailed_to TEXT');
 }
 
 const STRUCTURES = {
   'Moda': {
-    image:'/assets/estruturas/estrutura-moda.png?v=2',
+    image:'/assets/estruturas/estrutura-moda.png?v=4',
     title:'Estrutura contratada · Moda',
     items:['Arara: 1,80 m de altura','1,70 m de comprimento','0,30 m de largura','1 cadeira'],
     brandResponsibility:['Levar os próprios cabides'],
     note:'A disposição final poderá variar conforme o mix e o layout geral do evento.'
   },
   'Bem-Estar / Decoração': {
-    image:'/assets/estruturas/estrutura-bem-estar-decoracao.png?v=2',
+    image:'/assets/estruturas/estrutura-bem-estar-decoracao.png?v=4',
     title:'Estrutura contratada · Bem-Estar / Decoração',
     items:['Estante: 2,00 m de altura','1,50 m de comprimento','0,50 m de largura','5 prateleiras de 0,35 m','Aparador conforme contratação','1 cadeira'],
     brandResponsibility:[],
     note:'A posição final da marca é informada pela produção no momento da montagem. Atenção: na página 8 do manual, o texto informa 0,45 m de altura para o aparador, enquanto o desenho indica 0,80 m; confirme a medida final com a Logística.'
   },
   'Bolsas e Sapatos': {
-    image:'/assets/estruturas/estrutura-bolsas-sapatos.png?v=2',
+    image:'/assets/estruturas/estrutura-bolsas-sapatos.png?v=4',
     title:'Estrutura contratada · Bolsas e Sapatos',
     items:['Estante: 1,80 m de altura','2,30 m de comprimento','0,30 m de largura','5 prateleiras de 0,35 m','1 cadeira'],
     brandResponsibility:[],
     note:'Organize o mix exposto para manter circulação, visibilidade da marca e reposição rápida.'
   },
   'Acessórios': {
-    image:'/assets/estruturas/estrutura-acessorios.png?v=2',
+    image:'/assets/estruturas/estrutura-acessorios.png?v=4',
     title:'Estrutura contratada · Acessórios',
     items:['Mesa: 1,60 m x 0,80 m','1 cadeira'],
     brandResponsibility:['Levar displays e suportes adequados','Levar embalagens próprias para joias e acessórios'],
@@ -445,6 +377,45 @@ function removeFileIfUnreferenced(fileId){
 }
 function fileMeta(fileId){ if(!fileId)return null; return db.prepare('SELECT id,label,original_name,mime,created_at FROM files WHERE id=?').get(fileId)||null; }
 
+function smtpConfigured(){ return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && SMTP_FROM); }
+function mailTransport(){
+  if(!smtpConfigured()) throw Object.assign(new Error('Envio de e-mail ainda não configurado no Railway. Defina SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS e SMTP_FROM.'),{status:503});
+  return nodemailer.createTransport({host:SMTP_HOST,port:SMTP_PORT,secure:SMTP_SECURE,auth:{user:SMTP_USER,pass:SMTP_PASS}});
+}
+
+async function sendContractEmail({brandId,to}){
+  const brand=db.prepare(`SELECT b.*,u.email AS login_email FROM brands b LEFT JOIN users u ON u.brand_id=b.id AND u.role='brand' WHERE b.id=?`).get(brandId);
+  if(!brand) throw Object.assign(new Error('Marca não encontrada'),{status:404});
+  const allowed=[normalizeEmail(brand.contact_email),normalizeEmail(brand.login_email)].filter(Boolean);
+  const recipient=normalizeEmail(to || brand.contact_email || brand.login_email);
+  if(!validEmail(recipient)) throw Object.assign(new Error('Cadastre um e-mail válido para a marca antes de enviar o contrato.'),{status:400});
+  if(!allowed.includes(recipient)) throw Object.assign(new Error('O contrato só pode ser enviado para o e-mail de contato ou de login cadastrado nesta marca.'),{status:400});
+
+  const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId);
+  if(!c?.file_id) throw Object.assign(new Error('Anexe o PDF do contrato desta marca antes de enviar por e-mail.'),{status:400});
+  const f=db.prepare('SELECT * FROM files WHERE id=? AND brand_id=?').get(c.file_id,brandId);
+  if(!f) throw Object.assign(new Error('Arquivo do contrato não encontrado.'),{status:404});
+  const filePath=path.join(UPLOADS,f.stored_name);
+  if(!fs.existsSync(filePath)) throw Object.assign(new Error('PDF do contrato não está disponível no armazenamento.'),{status:404});
+
+  const responsible=brand.contact_name || brand.name;
+  const subject=`Contrato de Participação · Carandaí 25 · ${brand.name}`;
+  const html=`<p>Olá, ${htmlEsc(responsible)}.</p>
+    <p>Segue em anexo o <strong>Contrato de Participação no evento Carandaí 25</strong>, referente à marca <strong>${htmlEsc(brand.name)}</strong>.</p>
+    <p>Evento: 05 a 08 de novembro de 2026 · Jockey Club · Tribunas B & C · Rio de Janeiro.</p>
+    <p>Pedimos a conferência dos dados e das condições comerciais do documento.</p>
+    <p><strong>A assinatura do contrato será realizada de forma digital.</strong> Após este envio, a marca receberá um novo e-mail enviado pela plataforma de assinatura <strong>Contraktor</strong>, com o link e as instruções para realizar a assinatura eletrônica.</p>
+    <p>Se o e-mail da Contraktor não aparecer na caixa de entrada, recomendamos verificar também as pastas de spam, lixo eletrônico ou promoções.</p>
+    <p>O contrato também ficará disponível no Portal da Marca.</p>
+    <p>Atenciosamente,<br><strong>Carandaí 25</strong></p>`;
+
+  const transport=mailTransport();
+  await transport.sendMail({from:SMTP_FROM,to:recipient,subject,html,attachments:[{filename:f.original_name||'Contrato_Carandai25.pdf',path:filePath,contentType:f.mime||'application/pdf'}]});
+  const sentAt=nowISO();
+  db.prepare('UPDATE contracts SET emailed_at=?,emailed_to=?,updated_at=? WHERE brand_id=?').run(sentAt,recipient,sentAt,brandId);
+  return {to:recipient,sent_at:sentAt};
+}
+
 function brandSnapshot(brandId){
   const brand=db.prepare('SELECT * FROM brands WHERE id=?').get(brandId);
   if(!brand) return null;
@@ -594,15 +565,6 @@ async function api(req,res,url){
     if(!text(body.name) || !normalizeEmail(body.login_email) || String(body.password||'').length<8) return json(res,400,{error:'Nome, e-mail de login e senha (mín. 8 caracteres) são obrigatórios'});
     try{
       const id=createBrand({name:text(body.name),legal_name:text(body.legal_name),cnpj:text(body.cnpj),segment:text(body.segment)||'Moda',contact_name:text(body.contact_name),contact_email:text(body.contact_email),phone:text(body.phone),login_email:normalizeEmail(body.login_email),password:String(body.password)});
-      if(body.send_contract===true){
-        try{
-          const createdBrand=db.prepare('SELECT * FROM brands WHERE id=?').get(id);
-          const structure=safeJson(createdBrand.structure_json,{});
-          const loginEmail=normalizeEmail(body.login_email);
-          const html=formatContractEmail({...createdBrand,login_email:loginEmail},structure);
-          await sendEmail(loginEmail,'Contrato de Participação - Carandaí 25',html);
-        }catch(mailErr){ console.error('[admin/brands] Falha ao enviar contrato por e-mail:',mailErr); }
-      }
       return json(res,201,{ok:true,id});
     }catch(e){ if(String(e.message).includes('UNIQUE')) return json(res,409,{error:'Este e-mail já está em uso'}); throw e; }
   }
@@ -655,6 +617,14 @@ async function api(req,res,url){
     db.prepare(`UPDATE contracts SET status=?,file_id=?,signed_at=?,updated_at=? WHERE brand_id=?`).run(text(body.status)||c.status,fileId,text(body.signed_at)||null,nowISO(),brandId);
     if(body.file) removeFileIfUnreferenced(c.file_id);
     return json(res,200,{ok:true});
+  }
+
+  const contractEmailMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/email$/);
+  if(contractEmailMatch && req.method==='POST'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const brandId=contractEmailMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const result=await sendContractEmail({brandId,to:body.to});
+    return json(res,200,{ok:true,...result});
   }
 
   const billCreate=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/bills$/);
@@ -730,11 +700,7 @@ function serveStatic(req,res,url){
   const st=fs.statSync(filePath);
   const base=path.basename(filePath);
   const noCache=new Set(['index.html','app.js','styles.css','sw.js','manifest.json']).has(base);
-  const headers={'Content-Type':mimeByExt(filePath),'Content-Length':st.size};
-  if(filePath.endsWith('.png')||filePath.endsWith('.jpg')||filePath.endsWith('.jpeg'))headers['Cache-Control']='public, max-age=86400';
-  else headers['Cache-Control']=noCache?'no-cache':'public, max-age=3600';
-  if(['image/png','image/jpeg'].includes(headers['Content-Type']))headers['Accept-Encoding']='gzip, deflate';
-  res.writeHead(200,headers);
+  res.writeHead(200,{'Content-Type':mimeByExt(filePath),'Content-Length':st.size,'Cache-Control':noCache?'no-cache':'public, max-age=3600'});
   fs.createReadStream(filePath).pipe(res);
 }
 
@@ -750,7 +716,7 @@ const server=http.createServer(async (req,res)=>{
 });
 
 server.listen(PORT,()=>{
-  console.log(`\nCarandaí 25 · Portal da Marca v4.3`);
+  console.log(`\nCarandaí 25 · Portal da Marca v4.4`);
   console.log(`Acesse: http://localhost:${PORT}`);
   console.log(`Storage: ${STORAGE_ROOT}`);
   if(process.env.NODE_ENV!=='production'){
@@ -762,3 +728,4 @@ server.listen(PORT,()=>{
   }
   console.log('');
 });
+
