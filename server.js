@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const { buildContractPdfBuffer, safeFileName } = require('./contract-pdf');
 const { DatabaseSync } = require('node:sqlite');
 
 const ROOT = __dirname;
@@ -21,6 +22,9 @@ const SMTP_USER = textEnv('SMTP_USER');
 const SMTP_PASS = textEnv('SMTP_PASS');
 const SMTP_FROM = textEnv('SMTP_FROM') || SMTP_USER;
 const SMTP_SECURE = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || SMTP_PORT === 465;
+const RESEND_API_KEY = textEnv('RESEND_API_KEY');
+const EMAIL_FROM = textEnv('EMAIL_FROM') || SMTP_FROM;
+const EMAIL_REPLY_TO = textEnv('EMAIL_REPLY_TO') || 'carandai25comercial@gmail.com';
 
 function textEnv(name){ return String(process.env[name] || '').trim(); }
 
@@ -52,6 +56,54 @@ function validEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(
 function htmlEsc(v){ return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c])); }
 function safeJson(v, fallback){ try { return JSON.parse(v); } catch { return fallback; } }
 function moneyBR(cents){ return Number(cents||0); }
+function parseMoneyToCents(v){
+  let s=String(v??'').trim().replace(/R\$/gi,'').replace(/\s/g,'').replace(/[^0-9,.-]/g,'');
+  if(!s) return 0;
+  if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',','.');
+  else if(s.includes(',')) s=s.replace(',','.');
+  else if((s.match(/\./g)||[]).length>1) s=s.replace(/\./g,'');
+  const n=Number(s);
+  return Number.isFinite(n)?Math.round(n*100):0;
+}
+function defaultContractTerms(){
+  return {contract_date:new Date().toISOString().slice(0,10),total_cents:0,installments:[{due_date:'',amount_cents:0},{due_date:'',amount_cents:0},{due_date:'',amount_cents:0}]};
+}
+function contractTermsFromBody(body, previous={}){
+  const base={...defaultContractTerms(),...(previous||{})};
+  const old=Array.isArray(base.installments)?base.installments:[];
+  const installments=[0,1,2].map(i=>({
+    due_date:text(body[`installment${i+1}_due`] ?? old[i]?.due_date ?? ''),
+    amount_cents:body[`installment${i+1}_value`]!==undefined?parseMoneyToCents(body[`installment${i+1}_value`]):Number(old[i]?.amount_cents||0)
+  }));
+  return {
+    contract_date:text(body.contract_date ?? base.contract_date) || new Date().toISOString().slice(0,10),
+    total_cents:body.contract_total!==undefined?parseMoneyToCents(body.contract_total):Number(base.total_cents||0),
+    installments
+  };
+}
+
+function validateContractDraft(brand,terms){
+  const missing=[];
+  if(!text(brand?.legal_name||brand?.name)) missing.push('razão social');
+  if(!text(brand?.cnpj)) missing.push('CNPJ');
+  if(!text(brand?.address)) missing.push('endereço / sede');
+  if(!text(brand?.representative||brand?.contact_name)) missing.push('representante');
+  if(missing.length) return `Preencha os dados obrigatórios do contrato: ${missing.join(', ')}.`;
+  if(!text(terms?.contract_date)) return 'Informe a data do contrato.';
+  if(Number(terms?.total_cents||0)<=0) return 'Informe o valor total do contrato.';
+  const inst=Array.isArray(terms?.installments)?terms.installments:[];
+  let used=0,sum=0;
+  for(let i=0;i<3;i++){
+    const row=inst[i]||{}; const due=text(row.due_date); const amount=Number(row.amount_cents||0);
+    if(due || amount>0){
+      if(!due || amount<=0) return `Preencha vencimento e valor da ${i+1}ª parcela, ou deixe os dois campos em branco.`;
+      used++; sum+=amount;
+    }
+  }
+  if(!used) return 'Cadastre pelo menos uma parcela do contrato.';
+  if(sum!==Number(terms.total_cents||0)) return `A soma das parcelas (${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(sum/100)}) deve ser igual ao valor total (${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(terms.total_cents||0)/100)}).`;
+  return '';
+}
 
 function passwordHash(password){
   const salt = crypto.randomBytes(16).toString('hex');
@@ -79,6 +131,8 @@ function initSchema(){
       contact_name TEXT DEFAULT '',
       contact_email TEXT DEFAULT '',
       phone TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      representative TEXT DEFAULT '',
       status TEXT DEFAULT 'active',
       structure_json TEXT DEFAULT '{}',
       created_at TEXT NOT NULL
@@ -118,12 +172,20 @@ function initSchema(){
       brand_id TEXT NOT NULL UNIQUE,
       status TEXT NOT NULL DEFAULT 'pending',
       file_id TEXT,
+      signed_file_id TEXT,
       signed_at TEXT,
+      generated_at TEXT,
+      terms_json TEXT DEFAULT '{}',
       emailed_at TEXT,
       emailed_to TEXT,
+      email_status TEXT,
+      email_error TEXT,
+      email_provider TEXT,
+      email_message_id TEXT,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(brand_id) REFERENCES brands(id) ON DELETE CASCADE,
-      FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE SET NULL
+      FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE SET NULL,
+      FOREIGN KEY(signed_file_id) REFERENCES files(id) ON DELETE SET NULL
     );
     CREATE TABLE IF NOT EXISTS bills (
       id TEXT PRIMARY KEY,
@@ -179,9 +241,23 @@ function initSchema(){
   `);
 
   // Migração segura para bancos já existentes no Railway.
+  const brandCols = new Set(db.prepare('PRAGMA table_info(brands)').all().map(x=>x.name));
+  if(!brandCols.has('address')) db.exec("ALTER TABLE brands ADD COLUMN address TEXT DEFAULT ''");
+  if(!brandCols.has('representative')) db.exec("ALTER TABLE brands ADD COLUMN representative TEXT DEFAULT ''");
+
   const contractCols = new Set(db.prepare('PRAGMA table_info(contracts)').all().map(x=>x.name));
-  if(!contractCols.has('emailed_at')) db.exec('ALTER TABLE contracts ADD COLUMN emailed_at TEXT');
-  if(!contractCols.has('emailed_to')) db.exec('ALTER TABLE contracts ADD COLUMN emailed_to TEXT');
+  const contractMigrations=[
+    ['signed_file_id','ALTER TABLE contracts ADD COLUMN signed_file_id TEXT'],
+    ['generated_at','ALTER TABLE contracts ADD COLUMN generated_at TEXT'],
+    ['terms_json',"ALTER TABLE contracts ADD COLUMN terms_json TEXT DEFAULT '{}'"],
+    ['emailed_at','ALTER TABLE contracts ADD COLUMN emailed_at TEXT'],
+    ['emailed_to','ALTER TABLE contracts ADD COLUMN emailed_to TEXT'],
+    ['email_status','ALTER TABLE contracts ADD COLUMN email_status TEXT'],
+    ['email_error','ALTER TABLE contracts ADD COLUMN email_error TEXT'],
+    ['email_provider','ALTER TABLE contracts ADD COLUMN email_provider TEXT'],
+    ['email_message_id','ALTER TABLE contracts ADD COLUMN email_message_id TEXT']
+  ];
+  for(const [col,sql] of contractMigrations) if(!contractCols.has(col)) db.exec(sql);
 }
 
 const STRUCTURES = {
@@ -222,12 +298,12 @@ const DEFAULT_REQUIREMENTS = [
   ['cadastro','Dados cadastrais e contato da equipe no evento','2026-10-20']
 ];
 
-function createBrand({name, legal_name='', cnpj='', segment='Moda', contact_name='', contact_email='', phone='', login_email, password}){
+function createBrand({name, legal_name='', cnpj='', segment='Moda', contact_name='', contact_email='', phone='', address='', representative='', login_email, password}){
   const brandId = uid();
   const created = nowISO();
   const structure = STRUCTURES[segment] || {title:`Estrutura contratada · ${segment||'Personalizada'}`,items:[],brandResponsibility:[],note:''};
-  db.prepare(`INSERT INTO brands(id,name,legal_name,cnpj,segment,contact_name,contact_email,phone,status,structure_json,created_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(brandId,name,legal_name,cnpj,segment,contact_name,contact_email,phone,'active',JSON.stringify(structure),created);
+  db.prepare(`INSERT INTO brands(id,name,legal_name,cnpj,segment,contact_name,contact_email,phone,address,representative,status,structure_json,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(brandId,name,legal_name,cnpj,segment,contact_name,contact_email,phone,address,representative||contact_name,'active',JSON.stringify(structure),created);
   const userId = uid();
   db.prepare(`INSERT INTO users(id,brand_id,name,email,password_hash,role,created_at) VALUES(?,?,?,?,?,?,?)`)
     .run(userId,brandId,contact_name||name,normalizeEmail(login_email||contact_email),passwordHash(password||'Marca@2026'),'brand',created);
@@ -365,12 +441,23 @@ function saveBase64File({brandId,kind,label,file}){
     .run(id,brandId,kind,label||original,original,stored,mime,nowISO());
   return id;
 }
+function saveBufferFile({brandId,kind,label,originalName,mime='application/pdf',buffer}){
+  if(!Buffer.isBuffer(buffer) || !buffer.length) throw Object.assign(new Error('Arquivo gerado está vazio'),{status:500});
+  const id=uid();
+  const original=sanitizeName(originalName||'arquivo.pdf');
+  const stored=`${id}-${original}`;
+  fs.writeFileSync(path.join(UPLOADS,stored),buffer);
+  db.prepare(`INSERT INTO files(id,brand_id,kind,label,original_name,stored_name,mime,created_at) VALUES(?,?,?,?,?,?,?,?)`)
+    .run(id,brandId,kind,label||original,original,stored,mime,nowISO());
+  return id;
+}
 function removeFileIfUnreferenced(fileId){
   if(!fileId) return;
   const refs = db.prepare(`SELECT
     (SELECT COUNT(*) FROM contracts WHERE file_id=?) +
+    (SELECT COUNT(*) FROM contracts WHERE signed_file_id=?) +
     (SELECT COUNT(*) FROM bills WHERE file_id=?) +
-    (SELECT COUNT(*) FROM requirements WHERE file_id=?) AS n`).get(fileId,fileId,fileId).n;
+    (SELECT COUNT(*) FROM requirements WHERE file_id=?) AS n`).get(fileId,fileId,fileId,fileId).n;
   if(Number(refs)>0) return;
   const f=db.prepare('SELECT stored_name FROM files WHERE id=?').get(fileId);
   if(f){ try{fs.rmSync(path.join(UPLOADS,f.stored_name),{force:true});}catch{} db.prepare('DELETE FROM files WHERE id=?').run(fileId); }
@@ -378,11 +465,58 @@ function removeFileIfUnreferenced(fileId){
 function fileMeta(fileId){ if(!fileId)return null; return db.prepare('SELECT id,label,original_name,mime,created_at FROM files WHERE id=?').get(fileId)||null; }
 
 function smtpConfigured(){ return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && SMTP_FROM); }
-function mailTransport(){
-  if(!smtpConfigured()) throw Object.assign(new Error('Envio de e-mail ainda não configurado no Railway. Defina SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS e SMTP_FROM.'),{status:503});
-  return nodemailer.createTransport({host:SMTP_HOST,port:SMTP_PORT,secure:SMTP_SECURE,auth:{user:SMTP_USER,pass:SMTP_PASS}});
+function resendConfigured(){ return Boolean(RESEND_API_KEY && EMAIL_FROM); }
+function emailStatus(){
+  if(resendConfigured()) return {configured:true,provider:'resend',from:EMAIL_FROM};
+  if(smtpConfigured()) return {configured:true,provider:'smtp',from:SMTP_FROM};
+  return {configured:false,provider:'none',from:'',hint:'Configure RESEND_API_KEY + EMAIL_FROM (recomendado no Railway) ou SMTP em plano Railway Pro.'};
 }
-
+function mailTransport(){
+  if(!smtpConfigured()) throw Object.assign(new Error('SMTP não configurado.'),{status:503});
+  return nodemailer.createTransport({host:SMTP_HOST,port:SMTP_PORT,secure:SMTP_SECURE,auth:{user:SMTP_USER,pass:SMTP_PASS},connectionTimeout:12000,greetingTimeout:12000,socketTimeout:20000});
+}
+async function deliverEmail({to,subject,html,attachment=null}){
+  if(resendConfigured()){
+    const payload={from:EMAIL_FROM,to:[to],subject,html};
+    if(EMAIL_REPLY_TO) payload.reply_to=EMAIL_REPLY_TO;
+    if(attachment) payload.attachments=[{filename:attachment.filename,content:attachment.buffer.toString('base64')}];
+    const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${RESEND_API_KEY}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(20000)});
+    let data={}; try{data=await r.json();}catch{}
+    if(!r.ok) throw Object.assign(new Error(`Resend recusou o envio (${r.status}): ${data?.message||data?.error||'verifique a chave e o domínio remetente'}`),{status:502});
+    return {provider:'resend',message_id:data.id||''};
+  }
+  if(smtpConfigured()){
+    const info=await mailTransport().sendMail({from:SMTP_FROM,to,replyTo:EMAIL_REPLY_TO||undefined,subject,html,attachments:attachment?[{filename:attachment.filename,content:attachment.buffer,contentType:attachment.mime||'application/pdf'}]:[]});
+    return {provider:'smtp',message_id:info.messageId||''};
+  }
+  throw Object.assign(new Error('Envio de e-mail não configurado. No Railway Free/Trial/Hobby o SMTP é bloqueado; configure RESEND_API_KEY e EMAIL_FROM para enviar por HTTPS.'),{status:503});
+}
+async function generateContractForBrand(brandId,termsOverride=null,brandUpdates=null){
+  let brand=db.prepare('SELECT * FROM brands WHERE id=?').get(brandId);
+  if(!brand) throw Object.assign(new Error('Marca não encontrada'),{status:404});
+  if(brandUpdates){
+    const legal_name=text(brandUpdates.legal_name??brand.legal_name);
+    const cnpj=text(brandUpdates.cnpj??brand.cnpj);
+    const address=text(brandUpdates.address??brand.address);
+    const representative=text(brandUpdates.representative??brand.representative??brand.contact_name);
+    db.prepare('UPDATE brands SET legal_name=?,cnpj=?,address=?,representative=? WHERE id=?').run(legal_name,cnpj,address,representative,brandId);
+    brand={...brand,legal_name,cnpj,address,representative};
+  }
+  const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId);
+  if(!c) throw Object.assign(new Error('Contrato não encontrado'),{status:404});
+  const previous=safeJson(c.terms_json,defaultContractTerms());
+  const terms=termsOverride||previous;
+  const contractError=validateContractDraft(brand,terms);
+  if(contractError) throw Object.assign(new Error(contractError),{status:400});
+  const buffer=await buildContractPdfBuffer({brand,terms});
+  const filename=`Contrato_Carandai25_${safeFileName(brand.name)}.pdf`;
+  const newFileId=saveBufferFile({brandId,kind:'contract_generated',label:'Contrato gerado para assinatura',originalName:filename,mime:'application/pdf',buffer});
+  const generatedAt=nowISO();
+  db.prepare(`UPDATE contracts SET status=?,file_id=?,generated_at=?,terms_json=?,email_status=NULL,email_error=NULL,updated_at=? WHERE brand_id=?`)
+    .run('pending',newFileId,generatedAt,JSON.stringify(terms),generatedAt,brandId);
+  removeFileIfUnreferenced(c.file_id);
+  return {file:fileMeta(newFileId),generated_at:generatedAt,terms};
+}
 async function sendContractEmail({brandId,to}){
   const brand=db.prepare(`SELECT b.*,u.email AS login_email FROM brands b LEFT JOIN users u ON u.brand_id=b.id AND u.role='brand' WHERE b.id=?`).get(brandId);
   if(!brand) throw Object.assign(new Error('Marca não encontrada'),{status:404});
@@ -390,37 +524,51 @@ async function sendContractEmail({brandId,to}){
   const recipient=normalizeEmail(to || brand.contact_email || brand.login_email);
   if(!validEmail(recipient)) throw Object.assign(new Error('Cadastre um e-mail válido para a marca antes de enviar o contrato.'),{status:400});
   if(!allowed.includes(recipient)) throw Object.assign(new Error('O contrato só pode ser enviado para o e-mail de contato ou de login cadastrado nesta marca.'),{status:400});
-
   const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId);
-  if(!c?.file_id) throw Object.assign(new Error('Anexe o PDF do contrato desta marca antes de enviar por e-mail.'),{status:400});
+  if(!c?.file_id) throw Object.assign(new Error('Gere o contrato automático desta marca antes de enviar por e-mail.'),{status:400});
   const f=db.prepare('SELECT * FROM files WHERE id=? AND brand_id=?').get(c.file_id,brandId);
-  if(!f) throw Object.assign(new Error('Arquivo do contrato não encontrado.'),{status:404});
+  if(!f) throw Object.assign(new Error('Arquivo do contrato gerado não encontrado.'),{status:404});
   const filePath=path.join(UPLOADS,f.stored_name);
   if(!fs.existsSync(filePath)) throw Object.assign(new Error('PDF do contrato não está disponível no armazenamento.'),{status:404});
-
-  const responsible=brand.contact_name || brand.name;
-  const subject=`Contrato de Participação · Carandaí 25 · ${brand.name}`;
+  const responsible=brand.representative || brand.contact_name || brand.name;
+  const subject=`Contrato de Participação - Carandaí 25 - ${brand.name}`;
   const html=`<p>Olá, ${htmlEsc(responsible)}.</p>
     <p>Segue em anexo o <strong>Contrato de Participação no evento Carandaí 25</strong>, referente à marca <strong>${htmlEsc(brand.name)}</strong>.</p>
-    <p>Evento: 05 a 08 de novembro de 2026 · Jockey Club · Tribunas B & C · Rio de Janeiro.</p>
+    <p>Evento: 05 a 08 de novembro de 2026 - Jockey Club - Tribunas B & C - Rio de Janeiro.</p>
     <p>Pedimos a conferência dos dados e das condições comerciais do documento.</p>
-    <p><strong>A assinatura do contrato será realizada de forma digital.</strong> Após este envio, a marca receberá um novo e-mail enviado pela plataforma de assinatura <strong>Contraktor</strong>, com o link e as instruções para realizar a assinatura eletrônica.</p>
-    <p>Se o e-mail da Contraktor não aparecer na caixa de entrada, recomendamos verificar também as pastas de spam, lixo eletrônico ou promoções.</p>
+    <p><strong>A assinatura do contrato será realizada de forma digital.</strong> A marca receberá um novo e-mail enviado pela plataforma de assinatura <strong>Contraktor</strong>, com o link e as instruções para realizar a assinatura eletrônica.</p>
+    <p>Se o e-mail da Contraktor não aparecer na caixa de entrada, verifique também spam, lixo eletrônico e promoções.</p>
     <p>O contrato também ficará disponível no Portal da Marca.</p>
     <p>Atenciosamente,<br><strong>Carandaí 25</strong></p>`;
-
-  const transport=mailTransport();
-  await transport.sendMail({from:SMTP_FROM,to:recipient,subject,html,attachments:[{filename:f.original_name||'Contrato_Carandai25.pdf',path:filePath,contentType:f.mime||'application/pdf'}]});
-  const sentAt=nowISO();
-  db.prepare('UPDATE contracts SET emailed_at=?,emailed_to=?,updated_at=? WHERE brand_id=?').run(sentAt,recipient,sentAt,brandId);
-  return {to:recipient,sent_at:sentAt};
+  try{
+    const delivery=await deliverEmail({to:recipient,subject,html,attachment:{filename:f.original_name||'Contrato_Carandai25.pdf',buffer:fs.readFileSync(filePath),mime:f.mime||'application/pdf'}});
+    const sentAt=nowISO();
+    db.prepare(`UPDATE contracts SET emailed_at=?,emailed_to=?,email_status='sent',email_error=NULL,email_provider=?,email_message_id=?,updated_at=? WHERE brand_id=?`)
+      .run(sentAt,recipient,delivery.provider,delivery.message_id,sentAt,brandId);
+    return {to:recipient,sent_at:sentAt,...delivery};
+  }catch(err){
+    const at=nowISO();
+    try{db.prepare(`UPDATE contracts SET email_status='error',email_error=?,updated_at=? WHERE brand_id=?`).run(String(err.message||err).slice(0,900),at,brandId);}catch{}
+    throw err;
+  }
+}
+async function sendEmailTest(to){
+  const recipient=normalizeEmail(to);
+  if(!validEmail(recipient)) throw Object.assign(new Error('Informe um e-mail válido para o teste.'),{status:400});
+  const html='<p>Teste de envio do <strong>Portal Carandaí 25</strong>.</p><p>Se você recebeu esta mensagem, o serviço de e-mail está configurado corretamente.</p>';
+  return deliverEmail({to:recipient,subject:'Teste de e-mail - Portal Carandaí 25',html});
 }
 
 function brandSnapshot(brandId){
   const brand=db.prepare('SELECT * FROM brands WHERE id=?').get(brandId);
   if(!brand) return null;
   const contract=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId)||null;
-  if(contract) contract.file=fileMeta(contract.file_id);
+  if(contract){
+    contract.terms=safeJson(contract.terms_json,defaultContractTerms());
+    contract.file=fileMeta(contract.file_id);
+    contract.generated_file=fileMeta(contract.file_id);
+    contract.signed_file=fileMeta(contract.signed_file_id);
+  }
   const bills=db.prepare('SELECT * FROM bills WHERE brand_id=? ORDER BY installment,due_date').all(brandId).map(x=>({...x,file:fileMeta(x.file_id)}));
   const requirements=db.prepare('SELECT * FROM requirements WHERE brand_id=? ORDER BY due_date,label').all(brandId).map(x=>({...x,file:fileMeta(x.file_id)}));
   const messages=db.prepare('SELECT * FROM messages WHERE brand_id=? ORDER BY created_at ASC').all(brandId);
@@ -463,7 +611,7 @@ async function api(req,res,url){
   const pathname=url.pathname;
 
   if(pathname==='/api/health' && req.method==='GET'){
-    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.4.0',storage:STORAGE_ROOT});
+    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.6.0',storage:STORAGE_ROOT});
   }
 
   if(pathname==='/api/login' && req.method==='POST'){
@@ -562,10 +710,19 @@ async function api(req,res,url){
   if(pathname==='/api/admin/brands' && req.method==='POST'){
     const s=requireAuth(req,res,['admin']); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
-    if(!text(body.name) || !normalizeEmail(body.login_email) || String(body.password||'').length<8) return json(res,400,{error:'Nome, e-mail de login e senha (mín. 8 caracteres) são obrigatórios'});
+    if(!text(body.name) || !validEmail(body.login_email) || String(body.password||'').length<8) return json(res,400,{error:'Nome, e-mail de login válido e senha (mín. 8 caracteres) são obrigatórios'});
+    if(!validEmail(body.contact_email)) return json(res,400,{error:'Cadastre um e-mail de contato válido para a marca. Ele será usado no envio do contrato.'});
     try{
-      const id=createBrand({name:text(body.name),legal_name:text(body.legal_name),cnpj:text(body.cnpj),segment:text(body.segment)||'Moda',contact_name:text(body.contact_name),contact_email:text(body.contact_email),phone:text(body.phone),login_email:normalizeEmail(body.login_email),password:String(body.password)});
-      return json(res,201,{ok:true,id});
+      const draftBrand={name:text(body.name),legal_name:text(body.legal_name),cnpj:text(body.cnpj),address:text(body.address),representative:text(body.representative||body.contact_name),contact_name:text(body.contact_name)};
+      const terms=contractTermsFromBody(body);
+      const contractError=validateContractDraft(draftBrand,terms);
+      if(contractError) return json(res,400,{error:contractError});
+      const pdfBuffer=await buildContractPdfBuffer({brand:draftBrand,terms});
+      const id=createBrand({name:text(body.name),legal_name:text(body.legal_name),cnpj:text(body.cnpj),segment:text(body.segment)||'Moda',contact_name:text(body.contact_name),contact_email:text(body.contact_email),phone:text(body.phone),address:text(body.address),representative:text(body.representative||body.contact_name),login_email:normalizeEmail(body.login_email),password:String(body.password)});
+      const fileId=saveBufferFile({brandId:id,kind:'contract_generated',label:'Contrato gerado para assinatura',originalName:`Contrato_Carandai25_${safeFileName(body.name)}.pdf`,mime:'application/pdf',buffer:pdfBuffer});
+      const at=nowISO();
+      db.prepare(`UPDATE contracts SET status='pending',file_id=?,generated_at=?,terms_json=?,updated_at=? WHERE brand_id=?`).run(fileId,at,JSON.stringify(terms),at,id);
+      return json(res,201,{ok:true,id,contract_generated:true});
     }catch(e){ if(String(e.message).includes('UNIQUE')) return json(res,409,{error:'Este e-mail já está em uso'}); throw e; }
   }
 
@@ -576,7 +733,7 @@ async function api(req,res,url){
     const snap=brandSnapshot(id); if(!snap)return json(res,404,{error:'Marca não encontrada'});
     const login=db.prepare(`SELECT id,name,email FROM users WHERE brand_id=? AND role='brand'`).get(id);
     db.prepare(`UPDATE messages SET read_by_admin=1 WHERE brand_id=? AND sender_role='brand'`).run(id);
-    return json(res,200,{...snap,login,csrf:s.csrf,structures:STRUCTURES});
+    return json(res,200,{...snap,login,csrf:s.csrf,structures:STRUCTURES,email_config:emailStatus()});
   }
   if(brandMatch && req.method==='PATCH'){
     const s=requireAuth(req,res,['admin']); if(!s)return;
@@ -589,8 +746,8 @@ async function api(req,res,url){
       if(!structure.image && STRUCTURES[segment]?.image) structure.image=STRUCTURES[segment].image;
     }
     if(!structure.image && STRUCTURES[segment]?.image) structure.image=STRUCTURES[segment].image;
-    db.prepare(`UPDATE brands SET name=?,legal_name=?,cnpj=?,segment=?,contact_name=?,contact_email=?,phone=?,status=?,structure_json=? WHERE id=?`)
-      .run(text(body.name||b.name),text(body.legal_name??b.legal_name),text(body.cnpj??b.cnpj),segment,text(body.contact_name??b.contact_name),text(body.contact_email??b.contact_email),text(body.phone??b.phone),text(body.status||b.status),JSON.stringify(structure),id);
+    db.prepare(`UPDATE brands SET name=?,legal_name=?,cnpj=?,segment=?,contact_name=?,contact_email=?,phone=?,address=?,representative=?,status=?,structure_json=? WHERE id=?`)
+      .run(text(body.name||b.name),text(body.legal_name??b.legal_name),text(body.cnpj??b.cnpj),segment,text(body.contact_name??b.contact_name),text(body.contact_email??b.contact_email),text(body.phone??b.phone),text(body.address??b.address),text(body.representative??b.representative??b.contact_name),text(body.status||b.status),JSON.stringify(structure),id);
     if(body.login_email){
       try{db.prepare(`UPDATE users SET email=?,name=? WHERE brand_id=? AND role='brand'`).run(normalizeEmail(body.login_email),text(body.contact_name||body.name||b.name),id);}catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'E-mail de login já utilizado'});throw e;}
     }
@@ -613,10 +770,35 @@ async function api(req,res,url){
     const brandId=contractMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     let fileId=c.file_id;
-    if(body.file){ fileId=saveBase64File({brandId,kind:'contract',label:'Contrato da marca',file:body.file}); }
-    db.prepare(`UPDATE contracts SET status=?,file_id=?,signed_at=?,updated_at=? WHERE brand_id=?`).run(text(body.status)||c.status,fileId,text(body.signed_at)||null,nowISO(),brandId);
+    if(body.file) fileId=saveBase64File({brandId,kind:'contract_generated',label:'Contrato para assinatura',file:body.file});
+    db.prepare(`UPDATE contracts SET status=?,file_id=?,signed_at=?,updated_at=? WHERE brand_id=?`).run(text(body.status)||c.status,fileId,text(body.signed_at)||c.signed_at||null,nowISO(),brandId);
     if(body.file) removeFileIfUnreferenced(c.file_id);
     return json(res,200,{ok:true});
+  }
+
+  const contractGenerateMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/generate$/);
+  if(contractGenerateMatch && req.method==='POST'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const brandId=contractGenerateMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
+    const previous=safeJson(c.terms_json,defaultContractTerms());
+    const terms=contractTermsFromBody(body,previous);
+    const result=await generateContractForBrand(brandId,terms,{legal_name:body.legal_name,cnpj:body.cnpj,address:body.address,representative:body.representative});
+    return json(res,200,{ok:true,...result});
+  }
+
+  const contractSignedMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/signed$/);
+  if(contractSignedMatch && req.method==='POST'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const brandId=contractSignedMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
+    if(!body.file) return json(res,400,{error:'Selecione o PDF assinado.'});
+    if(!String(body.file.data||'').startsWith('data:application/pdf;base64,')) return json(res,400,{error:'O contrato assinado deve ser enviado em PDF.'});
+    const fileId=saveBase64File({brandId,kind:'contract_signed',label:'Contrato assinado',file:body.file});
+    const signedAt=text(body.signed_at)||new Date().toISOString().slice(0,10);
+    db.prepare(`UPDATE contracts SET status='signed',signed_file_id=?,signed_at=?,updated_at=? WHERE brand_id=?`).run(fileId,signedAt,nowISO(),brandId);
+    removeFileIfUnreferenced(c.signed_file_id);
+    return json(res,200,{ok:true,file:fileMeta(fileId),signed_at:signedAt});
   }
 
   const contractEmailMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/email$/);
@@ -624,6 +806,13 @@ async function api(req,res,url){
     const s=requireAuth(req,res,['admin']); if(!s)return;
     const brandId=contractEmailMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const result=await sendContractEmail({brandId,to:body.to});
+    return json(res,200,{ok:true,...result});
+  }
+
+  if(pathname==='/api/admin/email/test' && req.method==='POST'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const result=await sendEmailTest(body.to);
     return json(res,200,{ok:true,...result});
   }
 
@@ -716,7 +905,7 @@ const server=http.createServer(async (req,res)=>{
 });
 
 server.listen(PORT,()=>{
-  console.log(`\nCarandaí 25 · Portal da Marca v4.4`);
+  console.log(`\nCarandaí 25 · Portal da Marca v4.6`);
   console.log(`Acesse: http://localhost:${PORT}`);
   console.log(`Storage: ${STORAGE_ROOT}`);
   if(process.env.NODE_ENV!=='production'){
@@ -728,4 +917,3 @@ server.listen(PORT,()=>{
   }
   console.log('');
 });
-

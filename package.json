@@ -1,14 +1,15 @@
 {
   "name": "carandai25-portal-marcas",
-  "version": "4.4.0",
+  "version": "4.6.0",
   "private": true,
-  "description": "Portal operacional multi-marca Carandai 25 - Railway/GitHub com envio de contrato por e-mail",
+  "description": "Portal operacional multi-marca Carandai 25 - contratos automaticos, arquivo assinado e envio por e-mail",
   "scripts": {
     "start": "node server.js",
     "reset-demo": "node server.js --reset-demo"
   },
   "dependencies": {
-    "nodemailer": "^10.0.3"
+    "nodemailer": "^6.9.16",
+    "pdfkit": "^0.15.2"
   },
   "engines": {
     "node": ">=22.5.0"
