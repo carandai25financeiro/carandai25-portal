@@ -228,3 +228,24 @@ input[type=file]{max-width:100%}
 .password-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--ink);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;padding:9px 8px;z-index:2}
 .password-toggle:hover{text-decoration:underline}
 .password-toggle:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+/* CORREÇÃO - NOME DO CONTRATO */
+.contract-file-name,
+.contract-card h3 {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 8px 0 14px;
+
+  font-size: clamp(17px, 2vw, 25px);
+  line-height: 1.12;
+
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+/* Impede conteúdo de uma coluna invadir a outra */
+.two-col > .card {
+  min-width: 0;
+  overflow: hidden;
+}
