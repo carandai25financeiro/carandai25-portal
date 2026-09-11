@@ -584,7 +584,7 @@ async function sendContractEmail({brandId,to}){
       <p><strong>Evento:</strong> 05 a 08 de novembro de 2026 · Jockey Club · Tribunas B &amp; C · Rio de Janeiro.</p>
       <p>Pedimos a conferência dos dados e das condições comerciais do documento.</p>
 
-      <h2 style="font-size:20px;margin:28px 0 8px">Novo Portal da Marca Carandaí 25</h2>
+      <h2 style="font-size:20px;margin:28px 0 8px">Novo Portal - Carandai 25</h2>
       <p>Para facilitar a participação no evento, a Carandaí 25 criou uma nova plataforma exclusiva para as marcas expositoras. O portal reúne em um só lugar as principais informações, documentos e canais de atendimento da sua participação.</p>
       <p>No <strong>Portal da Marca</strong>, você terá acesso a:</p>
       <ul>
