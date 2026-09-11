@@ -249,3 +249,62 @@ input[type=file]{max-width:100%}
   min-width: 0;
   overflow: hidden;
 }
+/* CONTRATO - AJUSTE DOS DOIS QUADROS */
+
+.contract-file-name,
+.signed-contract-title{
+  display:block;
+  width:100%;
+  max-width:100%;
+  margin:8px 0 14px;
+
+  font-family:Georgia, serif;
+  font-style:italic;
+  font-weight:400;
+
+  font-size:clamp(18px, 1.8vw, 25px);
+  line-height:1.12;
+  letter-spacing:-0.02em;
+
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+/* Evita que um quadro invada o outro */
+.two-col > .card{
+  min-width:0;
+  overflow:hidden;
+}
+
+/* Mantém os dois quadros com alinhamento semelhante */
+.two-col{
+  align-items:stretch;
+}
+
+.two-col > .card{
+  height:100%;
+}
+
+/* Dá respiro entre o título e a divisão central */
+.two-col > .card:first-child{
+  padding-right:20px;
+}
+
+.two-col > .card:last-child{
+  padding-left:20px;
+}
+
+/* Celular */
+@media(max-width:850px){
+  .two-col > .card:first-child,
+  .two-col > .card:last-child{
+    padding-left:18px;
+    padding-right:18px;
+  }
+
+  .contract-file-name,
+  .signed-contract-title{
+    font-size:21px;
+  }
+}
