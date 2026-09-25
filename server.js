@@ -467,7 +467,7 @@ function clearSessionCookie(res){ res.setHeader('Set-Cookie','c25_session=; Http
 function effectiveRole(dbRole,accessScope){
   if(dbRole!=='admin') return dbRole;
   const scope=text(accessScope||'full').toLowerCase();
-  if(['commercial','finance','marketing'].includes(scope)) return scope;
+  if(['commercial','commercial_operational','finance','marketing'].includes(scope)) return scope;
   return 'admin';
 }
 function getSession(req){
@@ -741,16 +741,26 @@ function createCommercialUser({name,email,password}){
   return id;
 }
 
+function staffProfileFromScope(scope){
+  const s=text(scope||'full').toLowerCase();
+  if(['full','master'].includes(s)) return 'master';
+  if(s==='commercial') return 'commercial_crm';
+  return s;
+}
+function staffScopeFromProfile(profile){
+  const p=text(profile).toLowerCase();
+  return p==='commercial_crm'?'commercial':p;
+}
 function staffUserList(){
   return db.prepare(`SELECT u.id,u.name,u.email,COALESCE(u.access_scope,'full') AS access_scope,COALESCE(u.active,1) AS active,u.must_change_password,u.created_at,
     (SELECT COUNT(*) FROM crm_clients c WHERE c.owner_user_id=u.id) AS client_count
     FROM users u WHERE u.role='admin'
     ORDER BY CASE WHEN COALESCE(u.access_scope,'full') IN ('full','master') THEN 0 ELSE 1 END,u.name COLLATE NOCASE`).all()
-    .map(u=>({...u,profile:['full','master'].includes(u.access_scope)?'master':u.access_scope}));
+    .map(u=>({...u,profile:staffProfileFromScope(u.access_scope)}));
 }
 function createStaffUser({name,email,password,profile}){
-  const scope=text(profile).toLowerCase();
-  if(!['commercial','finance','marketing'].includes(scope)) throw Object.assign(new Error('Perfil de acesso inválido'),{status:400});
+  const scope=staffScopeFromProfile(profile);
+  if(!['commercial','commercial_operational','finance','marketing'].includes(scope)) throw Object.assign(new Error('Perfil de acesso inválido'),{status:400});
   const id=uid();
   db.prepare(`INSERT INTO users(id,brand_id,name,email,password_hash,role,access_scope,active,must_change_password,initial_password_enc,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id,null,text(name),normalizeEmail(email),passwordHash(password),'admin',scope,1,1,encryptInitialPassword(password),nowISO());
@@ -1059,10 +1069,11 @@ async function api(req,res,url){
     const u=db.prepare(`SELECT * FROM users WHERE id=? AND role='admin'`).get(id); if(!u)return json(res,404,{error:'Usuário não encontrado'});
     const currentScope=text(u.access_scope||'full').toLowerCase();
     if(['full','master'].includes(currentScope)) return json(res,403,{error:'O usuário Master é protegido e não pode ter o perfil ou status alterado por esta tela.'});
-    const profile=text(body.profile??currentScope).toLowerCase();
-    if(!['commercial','finance','marketing'].includes(profile))return json(res,400,{error:'Escolha Comercial, Financeiro ou Marketing'});
+    const profile=text(body.profile??staffProfileFromScope(currentScope)).toLowerCase();
+    const scope=staffScopeFromProfile(profile);
+    if(!['commercial','commercial_operational','finance','marketing'].includes(scope))return json(res,400,{error:'Escolha Comercial CRM, Comercial Operacional, Financeiro ou Marketing'});
     const active=body.active===undefined?Number(u.active??1):(body.active?1:0);
-    try{db.prepare('UPDATE users SET name=?,email=?,access_scope=?,active=? WHERE id=?').run(text(body.name??u.name),normalizeEmail(body.email??u.email),profile,active,id);}
+    try{db.prepare('UPDATE users SET name=?,email=?,access_scope=?,active=? WHERE id=?').run(text(body.name??u.name),normalizeEmail(body.email??u.email),scope,active,id);}
     catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
     if(body.new_password){
       if(String(body.new_password).length<8)return json(res,400,{error:'Senha deve ter pelo menos 8 caracteres'});
@@ -1095,7 +1106,7 @@ async function api(req,res,url){
   }
 
   if(pathname==='/api/admin/overview' && req.method==='GET'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','commercial_operational']); if(!s)return;
     const counts={
       brands:db.prepare('SELECT COUNT(*) AS n FROM brands').get().n,
       openBills:db.prepare(`SELECT COUNT(*) AS n FROM bills WHERE status NOT IN ('paid','cancelled')`).get().n,
@@ -1105,11 +1116,11 @@ async function api(req,res,url){
       crmClients:db.prepare('SELECT COUNT(*) AS n FROM crm_clients').get().n,
       staffUsers:db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role='admin' AND COALESCE(access_scope,'full') NOT IN ('full','master') AND COALESCE(active,1)=1`).get().n
     };
-    return json(res,200,{counts,brands:adminBrandList(),commercialUsers:commercialUserList(),staffUsers:staffUserList(),csrf:s.csrf,structures:Object.keys(STRUCTURES)});
+    return json(res,200,{counts,brands:adminBrandList(),commercialUsers:s.role==='admin'?commercialUserList():[],staffUsers:s.role==='admin'?staffUserList():[],csrf:s.csrf,structures:Object.keys(STRUCTURES)});
   }
 
   if(pathname==='/api/admin/brands' && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','commercial_operational']); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     if(!text(body.name) || !validEmail(body.login_email) || String(body.password||'').length<8) return json(res,400,{error:'Nome, e-mail de login válido e senha (mín. 8 caracteres) são obrigatórios'});
     if(!validEmail(body.contact_email)) return json(res,400,{error:'Cadastre um e-mail de contato válido para a marca. Ele será usado no envio do contrato.'});
@@ -1123,13 +1134,21 @@ async function api(req,res,url){
       const fileId=saveBufferFile({brandId:id,kind:'contract_generated',label:'Contrato gerado para assinatura',originalName:`Contrato_Carandai25_${safeFileName(body.name)}.pdf`,mime:'application/pdf',buffer:pdfBuffer});
       const at=nowISO();
       db.prepare(`UPDATE contracts SET status='pending',file_id=?,generated_at=?,terms_json=?,updated_at=? WHERE brand_id=?`).run(fileId,at,JSON.stringify(terms),at,id);
-      return json(res,201,{ok:true,id,contract_generated:true});
+      let email_sent=false,email_error='',email_provider='';
+      try{
+        const mail=await sendContractEmail({brandId:id,to:body.contact_email});
+        email_sent=true;
+        email_provider=mail.provider||'';
+      }catch(mailErr){
+        email_error=String(mailErr?.message||mailErr||'Falha no envio automático do contrato');
+      }
+      return json(res,201,{ok:true,id,contract_generated:true,email_sent,email_error,email_provider});
     }catch(e){ if(String(e.message).includes('UNIQUE')) return json(res,409,{error:'Este e-mail já está em uso'}); throw e; }
   }
 
   const brandMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)$/);
   if(brandMatch && req.method==='GET'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','commercial_operational']); if(!s)return;
     const id=brandMatch[1];
     const snap=brandSnapshot(id); if(!snap)return json(res,404,{error:'Marca não encontrada'});
     const login=db.prepare(`SELECT id,name,email,must_change_password,CASE WHEN initial_password_enc IS NOT NULL AND initial_password_enc<>'' THEN 1 ELSE 0 END AS has_temporary_password FROM users WHERE brand_id=? AND role='brand'`).get(id);
@@ -1137,7 +1156,7 @@ async function api(req,res,url){
     return json(res,200,{...snap,login,csrf:s.csrf,structures:STRUCTURES,email_config:emailStatus()});
   }
   if(brandMatch && req.method==='PATCH'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','commercial_operational']); if(!s)return;
     const id=brandMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const b=db.prepare('SELECT * FROM brands WHERE id=?').get(id); if(!b)return json(res,404,{error:'Marca não encontrada'});
     const segment=text(body.segment||b.segment); let structure=safeJson(b.structure_json,{});
@@ -1171,7 +1190,7 @@ async function api(req,res,url){
 
   const contractMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract$/);
   if(contractMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance','commercial_operational']); if(!s)return;
     const brandId=contractMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     let fileId=c.file_id;
@@ -1183,7 +1202,7 @@ async function api(req,res,url){
 
   const contractGenerateMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/generate$/);
   if(contractGenerateMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance','commercial_operational']); if(!s)return;
     const brandId=contractGenerateMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     const previous=safeJson(c.terms_json,defaultContractTerms());
@@ -1194,7 +1213,7 @@ async function api(req,res,url){
 
   const contractSignedMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/signed$/);
   if(contractSignedMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance','commercial_operational']); if(!s)return;
     const brandId=contractSignedMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     if(!body.file) return json(res,400,{error:'Selecione o PDF assinado.'});
@@ -1208,7 +1227,7 @@ async function api(req,res,url){
 
   const contractEmailMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/email$/);
   if(contractEmailMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance','commercial_operational']); if(!s)return;
     const brandId=contractEmailMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const result=await sendContractEmail({brandId,to:body.to});
     return json(res,200,{ok:true,...result});
