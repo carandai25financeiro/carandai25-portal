@@ -81,15 +81,18 @@
   function showPortal(){authScreen.classList.add('hidden');portal.classList.remove('hidden');}
   function setShell(){
     const role=state.me.role;
-    const roleLabels={admin:'Master',commercial:'Comercial',finance:'Financeiro',marketing:'Marketing',brand:'Marca'};
+    const roleLabels={admin:'Master',commercial:'Comercial CRM',commercial_operational:'Comercial Operacional',finance:'Financeiro',marketing:'Marketing',brand:'Marca'};
     $('#roleChip').textContent=roleLabels[role]||'Portal';
     $('#avatarInitials').textContent=initials(state.me.name);
     if(role==='admin'){
       $('#sideBrand').textContent='GESTÃO CARANDAÍ 25';
       $('#sideMeta').textContent='ACESSO MASTER';
     }else if(role==='commercial'){
-      $('#sideBrand').textContent='EQUIPE COMERCIAL';
+      $('#sideBrand').textContent='COMERCIAL CRM';
       $('#sideMeta').textContent='CRM · MARCAS & CLIENTES';
+    }else if(role==='commercial_operational'){
+      $('#sideBrand').textContent='COMERCIAL OPERACIONAL';
+      $('#sideMeta').textContent='CADASTRO · CONTRATOS';
     }else if(role==='finance'){
       $('#sideBrand').textContent='EQUIPE FINANCEIRO';
       $('#sideMeta').textContent='CONTRATOS · BOLETOS';
@@ -104,6 +107,8 @@
       ['admin-home','Visão geral','01'],['admin-brands','Marcas do evento','02'],['admin-pending','Pendências','03'],['commercial-home','CRM Comercial','04'],['admin-users','Usuários e acessos','05']
     ] : role==='commercial' ? [
       ['commercial-home','Início','01'],['commercial-clients','Marcas / Clientes','02'],['commercial-agenda','Agenda','03'],['commercial-reports','Relatórios','04']
+    ] : role==='commercial_operational' ? [
+      ['admin-home','Início','01'],['admin-brands','Marcas / Contratos','02']
     ] : role==='finance' || role==='marketing' ? [
       ['staff-home','Início','01'],['staff-brands','Marcas','02']
     ] : [
@@ -120,7 +125,7 @@
       const me=await api('/api/me');
       state.me={...me.user,brand:me.brand};state.csrf=me.csrf;state.passwordChangeRequired=!!me.user.must_change_password;showPortal();setShell();
       if(state.me.role!=='admin' && state.passwordChangeRequired){ openPasswordChangeModal(true); return; }
-      await navigate(state.me.role==='admin'?'admin-home':state.me.role==='commercial'?'commercial-home':['finance','marketing'].includes(state.me.role)?'staff-home':'home');
+      await navigate(state.me.role==='admin'?'admin-home':state.me.role==='commercial'?'commercial-home':state.me.role==='commercial_operational'?'admin-home':['finance','marketing'].includes(state.me.role)?'staff-home':'home');
     }catch(e){showAuth();}
   }
 
@@ -135,7 +140,7 @@
   });
   $('#logoutButton').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'});}catch{} state.me=null;state.csrf=null;state.data=null;state.commercial=null;state.crmDetail=null;state.staff=null;state.staffDetail=null;showAuth();closeSidebar();});
   $('#menuToggle').addEventListener('click',()=>sidebar.classList.toggle('open'));
-  $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':state.me?.role==='commercial'?'commercial-home':['finance','marketing'].includes(state.me?.role)?'staff-home':'profile'));
+  $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':state.me?.role==='commercial'?'commercial-home':state.me?.role==='commercial_operational'?'admin-home':['finance','marketing'].includes(state.me?.role)?'staff-home':'profile'));
   modalBackdrop.addEventListener('click',e=>{if(e.target===modalBackdrop)closeModal();});
 
   function openModal(html){modal.innerHTML=html;modalBackdrop.classList.remove('hidden');$('.modal-close',modal)?.addEventListener('click',closeModal);bindPasswordToggles(modal);}
@@ -179,7 +184,7 @@
         return;
       }
       if(state.me.role==='commercial'){await navigate('commercial-home');return;}
-      if(view==='admin-users'){await loadStaffUsers();viewAdminUsers();return;}
+      if(view==='admin-users'){if(state.me.role!=='admin'){await navigate('admin-home');return;}await loadStaffUsers();viewAdminUsers();return;}
       if(view==='admin-brand') await loadAdminBrand(param||state.brandDetail?.brand?.id); else await loadAdmin();
       if(view==='admin-home') viewAdminHome();
       else if(view==='admin-pending') viewAdminPending();
@@ -504,7 +509,7 @@
   function printCrmList(rows){printWindow('Relatório Comercial Carandaí 25',`<h1>Relatório de marcas / clientes</h1><p>${rows.length} cadastro(s) · filtro: ${esc(({all:'Todos',event:'Evento',store:'Loja',both:'Evento + Loja'})[state.crmReportFilter])}</p><table><thead><tr><th>Marca</th><th>Contato</th><th>Telefone</th><th>Tipo</th><th>Status</th></tr></thead><tbody>${rows.map(c=>`<tr><td>${esc(c.trade_name)}</td><td>${esc(c.contact_name)}</td><td>${esc(c.phone)}</td><td>${Number(c.serves_event)===1?'Evento ':''}${Number(c.serves_store)===1?'Loja':''}</td><td>${esc(statusLabel(c.status))}</td></tr>`).join('')}</tbody></table>`);}
   function printCrmClientReport(){const d=state.crmDetail,c=d.client;printWindow(`Linha do tempo · ${c.trade_name}`,`<h1>${esc(c.trade_name)}</h1><p>${esc(c.contact_name)} · ${esc(c.phone)}${c.email?' · '+esc(c.email):''}</p><p><span class="tag">${Number(c.serves_event)===1?'Evento':''}</span>${Number(c.serves_store)===1?'<span class="tag">Loja</span>':''} · ${esc(statusLabel(c.status))}</p><h2>Linha do tempo</h2>${d.activities.map(a=>`<div class="item"><div class="meta">${fmtDate(a.activity_date)} · ${esc(a.user_name||'Equipe Comercial')}</div><h3>${nl(a.note)}</h3>${a.next_contact_date?`<p>Próximo contato: ${fmtDate(a.next_contact_date)} · ${esc(a.next_action||'')}</p>`:''}</div>`).join('')||'<p>Nenhum contato registrado.</p>'}`);}
 
-  function profileLabel(p){return ({master:'Master',commercial:'Comercial',finance:'Financeiro',marketing:'Marketing'}[p]||p||'—');}
+  function profileLabel(p){return ({master:'Master',commercial_crm:'Comercial CRM',commercial_operational:'Comercial Operacional',finance:'Financeiro',marketing:'Marketing'}[p]||p||'—');}
   function viewAdminUsers(){
     const users=state.staffUsers.users||[];
     content.innerHTML=`${pageHead('ACESSOS DO PORTAL','Usuários & <em>permissões.</em>','O Master cria os usuários internos. Todos entram pela mesma tela principal e veem apenas o setor autorizado.',String(users.filter(u=>Number(u.active)===1).length),'ATIVOS')}
@@ -519,7 +524,7 @@
     openModal(`${modalHead(user?'Editar usuário':'Novo usuário interno','USUÁRIOS E ACESSOS')}<form id="staffUserForm" class="form-grid">
       <div class="field"><label>Nome<input name="name" value="${esc(user?.name||'')}" required></label></div>
       <div class="field"><label>E-mail de login<input name="email" type="email" value="${esc(user?.email||'')}" required></label></div>
-      <div class="field"><label>Perfil de acesso<select name="profile" required><option value="commercial" ${user?.profile==='commercial'?'selected':''}>Comercial</option><option value="finance" ${user?.profile==='finance'?'selected':''}>Financeiro</option><option value="marketing" ${user?.profile==='marketing'?'selected':''}>Marketing</option></select></label></div>
+      <div class="field"><label>Perfil de acesso<select name="profile" required><option value="commercial_crm" ${user?.profile==='commercial_crm'?'selected':''}>Comercial CRM</option><option value="commercial_operational" ${user?.profile==='commercial_operational'?'selected':''}>Comercial Operacional</option><option value="finance" ${user?.profile==='finance'?'selected':''}>Financeiro</option><option value="marketing" ${user?.profile==='marketing'?'selected':''}>Marketing</option></select></label></div>
       <div class="field"><label>${user?'Nova senha temporária':'Senha inicial'}<div class="password-wrap"><input id="staffTempPassword" name="password" type="password" minlength="8" ${user?'placeholder="Deixe em branco para manter"':'required'}><button type="button" class="password-toggle" data-password-toggle="staffTempPassword">Ver</button></div></label><small>${user?'Preencha somente para redefinir.':'No primeiro acesso o usuário deverá criar uma nova senha.'}</small></div>
       ${user?`<div class="field full"><div class="crm-checks"><label><input type="checkbox" id="staffActive" ${Number(user.active)===1?'checked':''}> Usuário ativo</label></div></div>`:''}
       <div class="field full"><button class="btn btn-dark" type="submit">Salvar usuário e acesso</button></div>
