@@ -40,6 +40,7 @@ a{color:inherit}
 .login-form input,.field input,.field select,.field textarea{width:100%;border:1px solid var(--ink);background:transparent;padding:15px 14px;outline:none;border-radius:0;font-size:15px;letter-spacing:0;text-transform:none;font-weight:400}
 .login-form input:focus,.field input:focus,.field select:focus,.field textarea:focus{box-shadow:inset 0 0 0 2px var(--blue);border-color:var(--blue)}
 .form-message{min-height:18px;font-size:12px;color:var(--red)}
+.login-access-note{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin-top:2px}
 .demo-help{margin-top:12px;max-width:560px;border-top:1px solid var(--line);padding-top:12px;color:var(--muted);font-size:12px}
 .demo-help summary{cursor:pointer;font-weight:700;color:var(--ink)}
 .demo-help p{line-height:1.65}
