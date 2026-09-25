@@ -5,7 +5,10 @@
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
   const state = {
     me:null, csrf:null, data:null, admin:null, brandDetail:null,
-    view:null, selectedSector:'Logística', adminTab:'summary', search:'', passwordChangeRequired:false
+    commercial:null, crmDetail:null, commercialUsers:null,
+    view:null, selectedSector:'Logística', adminTab:'summary', search:'', passwordChangeRequired:false,
+    crmSearch:'', crmFilter:'all', crmReportFilter:'all', crmTab:'timeline',
+    crmMonth:new Date().toISOString().slice(0,7)
   };
 
   const authScreen=$('#authScreen'), portal=$('#portal'), content=$('#content'), sideNav=$('#sideNav'), sidebar=$('#sidebar');
@@ -39,7 +42,8 @@
     const apply=()=>{const count=Math.max(1,Math.min(MAX_CONTRACT_INSTALLMENTS,Number(select.value)||1));$$('[data-installment-field]',form).forEach(field=>{const active=Number(field.dataset.installmentField)<=count;field.classList.toggle('hidden',!active);$('input',field).disabled=!active;$('input',field).required=active;});};
     select.addEventListener('change',apply); apply();
   }
-  function statusLabel(s){return ({pending:'Pendente',received:'Recebido',approved:'Aprovado',done:'Concluído',paid:'Pago',overdue:'Vencido',rejected:'Reprovado',draft:'Rascunho',signed:'Assinado',active:'Ativo',inactive:'Inativo',cancelled:'Cancelado'}[s]||s||'—');}
+  function statusLabel(s){return ({pending:'Pendente',received:'Recebido',approved:'Aprovado',done:'Concluído',paid:'Pago',overdue:'Vencido',rejected:'Reprovado',draft:'Rascunho',signed:'Assinado',active:'Ativo',inactive:'Inativo',cancelled:'Cancelado',prospect:'Novo contato',contacted:'Contatado',negotiation:'Em negociação',client:'Cliente',paused:'Pausado'}[s]||s||'—');}
+  function todayISO(){const d=new Date();const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
   function status(s){return `<span class="status ${esc(s)}">${esc(statusLabel(s))}</span>`;}
   function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>toastEl.classList.remove('show'),2800);}
   function showError(err){toast(err?.message||'Não foi possível concluir a ação.');}
@@ -76,19 +80,30 @@
   function showAuth(){authScreen.classList.remove('hidden');portal.classList.add('hidden');}
   function showPortal(){authScreen.classList.add('hidden');portal.classList.remove('hidden');}
   function setShell(){
-    $('#roleChip').textContent=state.me.role==='admin'?'Admin':'Marca';
+    const role=state.me.role;
+    $('#roleChip').textContent=role==='admin'?'Admin':role==='commercial'?'Comercial':'Marca';
     $('#avatarInitials').textContent=initials(state.me.name);
-    $('#sideBrand').textContent=state.me.role==='admin'?'GESTÃO CARANDAÍ 25':(state.me.brand?.name||'Minha marca');
-    $('#sideMeta').textContent=state.me.role==='admin'?'Operação · Rio 2026':'Jockey Club · 05–08 NOV';
-    const nav=state.me.role==='admin' ? [
-      ['admin-home','Visão geral','01'],['admin-brands','Marcas','02'],['admin-pending','Pendências','03']
+    if(role==='admin'){
+      $('#sideBrand').textContent='GESTÃO CARANDAÍ 25';
+      $('#sideMeta').textContent='Operação · Rio 2026';
+    }else if(role==='commercial'){
+      $('#sideBrand').textContent='EQUIPE COMERCIAL';
+      $('#sideMeta').textContent='CRM · MARCAS & CLIENTES';
+    }else{
+      $('#sideBrand').textContent=state.me.brand?.name||'Minha marca';
+      $('#sideMeta').textContent='Jockey Club · 05–08 NOV';
+    }
+    const nav=role==='admin' ? [
+      ['admin-home','Visão geral','01'],['admin-brands','Marcas do evento','02'],['admin-pending','Pendências','03'],['commercial-home','CRM Comercial','04'],['admin-commercial-users','Equipe Comercial','05']
+    ] : role==='commercial' ? [
+      ['commercial-home','Início','01'],['commercial-clients','Marcas / Clientes','02'],['commercial-agenda','Agenda','03'],['commercial-reports','Relatórios','04']
     ] : [
       ['home','Início','01'],['event','Meu evento','02'],['contract','Contrato','03'],['bills','Boletos','04'],['structure','Estrutura','05'],['docs','Documentos','06'],['manuals','Manuais','07'],['messages','Mensagens','08'],['contacts','Equipe','09'],['profile','Perfil','10']
     ];
     sideNav.innerHTML=nav.map(([id,label,n])=>`<button class="nav-item" data-view="${id}"><span>${label}</span><span>${n}</span></button>`).join('');
-    $$('.nav-item',sideNav).forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));
+    $('.nav-item',sideNav).forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));
   }
-  function activateNav(view){$$('.nav-item',sideNav).forEach(b=>b.classList.toggle('active',b.dataset.view===view||(view==='admin-brand'&&b.dataset.view==='admin-brands')));}
+  function activateNav(view){$('.nav-item',sideNav).forEach(b=>b.classList.toggle('active',b.dataset.view===view||(view==='admin-brand'&&b.dataset.view==='admin-brands')||(view==='commercial-client'&&b.dataset.view==='commercial-clients')));}
   function closeSidebar(){sidebar.classList.remove('open');}
 
   async function boot(){
@@ -96,7 +111,7 @@
       const me=await api('/api/me');
       state.me={...me.user,brand:me.brand};state.csrf=me.csrf;state.passwordChangeRequired=!!me.user.must_change_password;showPortal();setShell();
       if(state.me.role==='brand' && state.passwordChangeRequired){ openPasswordChangeModal(true); return; }
-      await navigate(state.me.role==='admin'?'admin-home':'home');
+      await navigate(state.me.role==='admin'?'admin-home':state.me.role==='commercial'?'commercial-home':'home');
     }catch(e){showAuth();}
   }
 
@@ -109,9 +124,9 @@
       state.csrf=r.csrf;await boot();
     }catch(err){msg.textContent=err.message;}
   });
-  $('#logoutButton').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'});}catch{} state.me=null;state.csrf=null;state.data=null;showAuth();closeSidebar();});
+  $('#logoutButton').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'});}catch{} state.me=null;state.csrf=null;state.data=null;state.commercial=null;state.crmDetail=null;showAuth();closeSidebar();});
   $('#menuToggle').addEventListener('click',()=>sidebar.classList.toggle('open'));
-  $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':'profile'));
+  $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':state.me?.role==='commercial'?'commercial-home':'profile'));
   modalBackdrop.addEventListener('click',e=>{if(e.target===modalBackdrop)closeModal();});
 
   function openModal(html){modal.innerHTML=html;modalBackdrop.classList.remove('hidden');$('.modal-close',modal)?.addEventListener('click',closeModal);bindPasswordToggles(modal);}
@@ -141,14 +156,36 @@
         await loadBrand();
         const fn={home:viewHome,event:viewEvent,contract:viewContract,bills:viewBills,structure:viewStructure,docs:viewDocs,manuals:viewManuals,messages:viewMessages,contacts:viewContacts,profile:viewProfile}[view]||viewHome;
         fn();
-      }else{
-        if(view==='admin-brand') await loadAdminBrand(param||state.brandDetail?.brand?.id);
-        else await loadAdmin();
-        if(view==='admin-home') viewAdminHome();
-        else if(view==='admin-pending') viewAdminPending();
-        else if(view==='admin-brand') viewAdminBrand();
-        else viewAdminBrands();
+        return;
       }
+      if(view.startsWith('commercial-')){
+        if(view==='commercial-client'){
+          await loadCrmClient(param||state.crmDetail?.client?.id);
+          viewCommercialClient();
+        }else{
+          await loadCommercial();
+          if(view==='commercial-home') viewCommercialHome();
+          else if(view==='commercial-agenda') viewCommercialAgenda();
+          else if(view==='commercial-reports') viewCommercialReports();
+          else viewCommercialClients();
+        }
+        return;
+      }
+      if(state.me.role==='commercial'){
+        await navigate('commercial-home');
+        return;
+      }
+      if(view==='admin-commercial-users'){
+        await loadCommercialUsers();
+        viewAdminCommercialUsers();
+        return;
+      }
+      if(view==='admin-brand') await loadAdminBrand(param||state.brandDetail?.brand?.id);
+      else await loadAdmin();
+      if(view==='admin-home') viewAdminHome();
+      else if(view==='admin-pending') viewAdminPending();
+      else if(view==='admin-brand') viewAdminBrand();
+      else viewAdminBrands();
     }catch(err){
       if(err.status===401){showAuth();return;}
       content.innerHTML=`<div class="empty"><strong>Algo não carregou.</strong>${esc(err.message)}</div>`;
@@ -157,6 +194,9 @@
   async function loadBrand(){state.data=await api('/api/dashboard');}
   async function loadAdmin(){state.admin=await api('/api/admin/overview');state.csrf=state.admin.csrf||state.csrf;}
   async function loadAdminBrand(id){if(!id)throw new Error('Selecione uma marca.');state.brandDetail=await api(`/api/admin/brand/${encodeURIComponent(id)}`);state.csrf=state.brandDetail.csrf||state.csrf;}
+  async function loadCommercial(){state.commercial=await api('/api/commercial/overview');state.csrf=state.commercial.csrf||state.csrf;}
+  async function loadCrmClient(id){if(!id)throw new Error('Selecione uma marca/cliente.');state.crmDetail=await api(`/api/commercial/client/${encodeURIComponent(id)}`);state.csrf=state.crmDetail.csrf||state.csrf;}
+  async function loadCommercialUsers(){state.commercialUsers=await api('/api/admin/commercial-users');state.csrf=state.commercialUsers.csrf||state.csrf;}
 
   function pageHead(kicker,title,desc,meta='',metaLabel=''){
     return `<div class="page-head"><div><span class="kicker">${esc(kicker)}</span><h1>${title}</h1>${desc?`<p>${esc(desc)}</p>`:''}</div>${meta?`<div class="head-meta"><strong>${esc(meta)}</strong><span>${esc(metaLabel)}</span></div>`:''}</div>`;
@@ -306,15 +346,182 @@
     $('#changeOwnPassword').addEventListener('click',()=>openPasswordChangeModal(false));
   }
 
+
+  /* CRM COMERCIAL */
+  function crmType(c){
+    const tags=[];if(Number(c.serves_event)===1)tags.push('<span class="crm-tag event">Evento</span>');if(Number(c.serves_store)===1)tags.push('<span class="crm-tag store">Loja</span>');return tags.join(' ');
+  }
+  function crmFilterRows(rows,filter=state.crmFilter,search=state.crmSearch){
+    return rows.filter(c=>{
+      const q=String(search||'').trim().toLowerCase();
+      const hit=!q||\`\${c.trade_name} \${c.contact_name} \${c.phone} \${c.email||''} \${c.cnpj||''} \${c.legal_name||''} \${c.address||''}\`.toLowerCase().includes(q);
+      const type=filter==='all'||(filter==='event'&&Number(c.serves_event)===1)||(filter==='store'&&Number(c.serves_store)===1)||(filter==='both'&&Number(c.serves_event)===1&&Number(c.serves_store)===1);
+      return hit&&type;
+    });
+  }
+  function crmClientTable(rows){
+    return \`<div class="crm-table"><div class="crm-line head"><div>Marca / Cliente</div><div>Contato</div><div>Atuação</div><div>Status</div><div>Último contato</div><div>Próximo</div><div></div></div>\${rows.map(c=>\`<div class="crm-line" data-crm="\${c.id}"><div><div class="name">\${esc(c.trade_name)}</div>\${state.me.role==='admin'&&c.owner_name?\`<div class="seg">Responsável: \${esc(c.owner_name)}</div>\`:''}</div><div><strong>\${esc(c.contact_name)}</strong><span>\${esc(c.phone)}</span></div><div>\${crmType(c)}</div><div>\${status(c.status)}</div><div>\${fmtDate(c.last_contact)}</div><div>\${fmtDate(c.next_contact)}</div><div>→</div></div>\`).join('')||'<div class="empty"><strong>Nenhum cadastro encontrado.</strong>Use “Nova marca / cliente” para começar o histórico comercial.</div>'}</div>\`;
+  }
+  function bindCrmRows(){$('[data-crm]',content).forEach(r=>{r.style.cursor='pointer';r.addEventListener('click',()=>{state.crmTab='timeline';navigate('commercial-client',r.dataset.crm)});});}
+  function crmFilters(){return \`<div class="crm-filterbar"><input class="search" id="crmSearch" placeholder="Buscar marca, contato, telefone ou CNPJ" value="\${esc(state.crmSearch)}"><select id="crmFilter" class="search"><option value="all" \${state.crmFilter==='all'?'selected':''}>Todos</option><option value="event" \${state.crmFilter==='event'?'selected':''}>Evento</option><option value="store" \${state.crmFilter==='store'?'selected':''}>Loja</option><option value="both" \${state.crmFilter==='both'?'selected':''}>Evento + Loja</option></select><button class="btn btn-dark" id="newCrmClient">+ Nova marca / cliente</button></div>\`;}
+
+  function viewCommercialHome(){
+    const d=state.commercial,c=d.counts,today=todayISO();
+    const upcoming=d.activities.filter(a=>a.next_contact_date&&a.next_contact_date>=today).sort((a,b)=>String(a.next_contact_date).localeCompare(String(b.next_contact_date))).slice(0,8);
+    const recent=d.activities.slice(0,6);
+    content.innerHTML=\`\${pageHead('COMERCIAL CARANDAÍ 25','Relacionamento <em>com marcas.</em>','Histórico de prospecção, agenda e clientes de Evento e Loja.',String(c.total),'MARCAS / CLIENTES')}
+      <section class="hero-panel crm-hero"><div><span class="kicker">CRM COMERCIAL</span><h2>Cada conversa.<br>Todo o histórico.</h2><p>Cadastre marcas novas mesmo sem CNPJ ou razão social, registre o que foi conversado por data e acompanhe os próximos contatos.</p></div><div class="event-side"><strong>\${c.event}</strong><span>Evento</span><strong style="margin-top:18px">\${c.store}</strong><span>Loja · \${c.both} em ambos</span></div></section>
+      <div class="metric-grid"><div class="metric"><div class="num">\${c.total}</div><div class="label">Marcas / clientes</div></div><div class="metric blue"><div class="num">\${c.event}</div><div class="label">Evento</div></div><div class="metric"><div class="num">\${c.store}</div><div class="label">Loja</div></div><div class="metric attention"><div class="num">\${upcoming.length}</div><div class="label">Próximos contatos</div></div></div>
+      <div class="inline-actions crm-home-actions"><button class="btn btn-dark" id="crmHomeNew">+ Cadastrar marca</button><button class="btn" id="crmHomeAgenda">Abrir agenda</button><button class="btn" id="crmHomeReports">Relatórios</button></div>
+      <div class="two-col"><div><div class="section-title"><h2>Próximos contatos</h2><p>Follow-ups anotados na agenda.</p></div>\${upcoming.length?\`<div class="agenda-list">\${upcoming.map(a=>\`<button class="agenda-item" data-crm="\${a.client_id}"><div class="agenda-date">\${fmtDate(a.next_contact_date)}</div><div><strong>\${esc(a.trade_name)}</strong><p>\${esc(a.next_action||'Retomar contato')}</p></div><span>→</span></button>\`).join('')}</div>\`:'<div class="empty"><strong>Agenda livre.</strong>Nenhum próximo contato programado.</div>'}</div><div><div class="section-title"><h2>Conversas recentes</h2><p>Últimos registros da equipe.</p></div>\${recent.length?\`<div class="timeline compact">\${recent.map(a=>\`<div class="timeline-item"><div class="timeline-dot"></div><div><span>\${fmtDate(a.activity_date)} · \${esc(a.user_name||'Comercial')}</span><strong>\${esc(a.trade_name)}</strong><p>\${nl(a.note)}</p></div></div>\`).join('')}</div>\`:'<div class="empty"><strong>Sem histórico ainda.</strong>Registre o primeiro contato com uma marca.</div>'}</div></div>\`;
+    $('#crmHomeNew').addEventListener('click',()=>openCrmClientModal());
+    $('#crmHomeAgenda').addEventListener('click',()=>navigate('commercial-agenda'));
+    $('#crmHomeReports').addEventListener('click',()=>navigate('commercial-reports'));
+    $('[data-crm]',content).forEach(x=>x.addEventListener('click',()=>navigate('commercial-client',x.dataset.crm)));
+  }
+
+  function viewCommercialClients(){
+    const rows=crmFilterRows(state.commercial.clients);
+    content.innerHTML=\`\${pageHead('BASE COMERCIAL','Marcas & <em>clientes.</em>','CNPJ e razão social podem ser preenchidos depois. O histórico começa desde o primeiro contato.',String(rows.length),'RESULTADOS')}\${crmFilters()}\${crmClientTable(rows)}\`;
+    $('#crmSearch').addEventListener('input',e=>{state.crmSearch=e.target.value;viewCommercialClients();$('#crmSearch')?.focus();});
+    $('#crmFilter').addEventListener('change',e=>{state.crmFilter=e.target.value;viewCommercialClients();});
+    $('#newCrmClient').addEventListener('click',()=>openCrmClientModal());
+    bindCrmRows();
+  }
+
+  function openCrmClientModal(client=null){
+    const isAdmin=state.me.role==='admin';
+    const users=state.commercial?.commercialUsers||state.crmDetail?.commercialUsers||[];
+    openModal(\`\${modalHead(client?'Editar marca / cliente':'Nova marca / cliente','CRM COMERCIAL')}<form id="crmClientForm" class="form-grid">
+      <div class="field"><label>Nome fantasia<input name="trade_name" value="\${esc(client?.trade_name||'')}" required></label></div>
+      <div class="field"><label>Nome do contato<input name="contact_name" value="\${esc(client?.contact_name||'')}" required></label></div>
+      <div class="field"><label>Telefone de contato<input name="phone" value="\${esc(client?.phone||'')}" required></label></div>
+      <div class="field"><label>E-mail<input name="email" type="email" value="\${esc(client?.email||'')}"></label></div>
+      <div class="field"><label>CEP<input name="cep" value="\${esc(client?.cep||'')}" required></label></div>
+      <div class="field full"><label>Endereço<input name="address" value="\${esc(client?.address||'')}" required></label></div>
+      <div class="field"><label>CNPJ <small>opcional</small><input name="cnpj" value="\${esc(client?.cnpj||'')}"></label></div>
+      <div class="field"><label>Razão social <small>opcional</small><input name="legal_name" value="\${esc(client?.legal_name||'')}"></label></div>
+      <div class="field"><label>Status<select name="status">\${['prospect','contacted','negotiation','client','paused'].map(x=>\`<option value="\${x}" \${client?.status===x?'selected':''}>\${statusLabel(x)}</option>\`).join('')}</select></label></div>
+      \${isAdmin?\`<div class="field"><label>Responsável comercial<select name="owner_user_id"><option value="">Sem responsável</option>\${users.map(u=>\`<option value="\${u.id}" \${client?.owner_user_id===u.id?'selected':''}>\${esc(u.name)}</option>\`).join('')}</select></label></div>\`:''}
+      <div class="field full"><span class="field-label">Relacionamento</span><div class="crm-checks"><label><input type="checkbox" name="serves_event" \${Number(client?.serves_event)===1?'checked':''}> Evento</label><label><input type="checkbox" name="serves_store" \${Number(client?.serves_store)===1?'checked':''}> Loja</label></div><small>A mesma marca pode ser Evento e Loja ao mesmo tempo.</small></div>
+      <div class="field full"><label>Observação geral<textarea name="notes">\${esc(client?.notes||'')}</textarea></label></div>
+      <div class="field full"><button class="btn btn-dark" type="submit">\${client?'Salvar cadastro':'Cadastrar marca / cliente'}</button></div>
+    </form>\`);
+    $('#crmClientForm').addEventListener('submit',async e=>{e.preventDefault();try{const fd=new FormData(e.target);const body=Object.fromEntries(fd.entries());body.serves_event=$('[name="serves_event"]',e.target).checked;body.serves_store=$('[name="serves_store"]',e.target).checked;const url=client?\`/api/commercial/client/\${client.id}\`:'/api/commercial/clients';await api(url,{method:client?'PATCH':'POST',body});closeModal();toast(client?'Cadastro atualizado.':'Marca cadastrada no CRM.');await loadCommercial();if(client){await loadCrmClient(client.id);viewCommercialClient();}else viewCommercialClients();}catch(err){showError(err)}});
+  }
+
+  function viewCommercialClient(){
+    const d=state.crmDetail,c=d.client;
+    content.innerHTML=\`\${pageHead('HISTÓRICO COMERCIAL',esc(c.trade_name),'Cadastro, conversas e agenda desta marca.',statusLabel(c.status),'STATUS')}
+      <div class="crm-client-head"><div><div class="crm-type-wrap">\${crmType(c)}</div><h2>\${esc(c.contact_name)}</h2><p>\${esc(c.phone)}\${c.email?\` · \${esc(c.email)}\`:''}</p></div><div class="inline-actions"><button class="btn btn-dark" id="addCrmActivity">+ Registrar contato</button><button class="btn" id="editCrmClient">Editar cadastro</button></div></div>
+      <div class="admin-tabs">\${[['timeline','Linha do tempo'],['profile','Cadastro'],['agenda','Agenda']].map(([id,l])=>\`<button class="admin-tab \${state.crmTab===id?'active':''}" data-crmtab="\${id}">\${l}</button>\`).join('')}</div><div id="crmPanel" class="admin-panel"></div>\`;
+    $('[data-crmtab]',content).forEach(x=>x.addEventListener('click',()=>{state.crmTab=x.dataset.crmtab;renderCrmTab();}));
+    $('#addCrmActivity').addEventListener('click',()=>openCrmActivityModal(c.id));
+    $('#editCrmClient').addEventListener('click',()=>openCrmClientModal(c));
+    renderCrmTab();
+  }
+  function crmPanel(){return $('#crmPanel');}
+  function renderCrmTab(){if(state.crmTab==='profile')renderCrmProfile();else if(state.crmTab==='agenda')renderCrmClientAgenda();else renderCrmTimeline();}
+  function renderCrmTimeline(){
+    const d=state.crmDetail,c=d.client;
+    crmPanel().innerHTML=\`<div class="admin-toolbar"><span class="mini-label">LINHA DO TEMPO · \${d.activities.length} REGISTRO(S)</span><div class="inline-actions"><button class="btn btn-small" id="printCrmTimeline">Imprimir relatório</button><button class="btn btn-dark btn-small" id="timelineAdd">+ Novo contato</button></div></div>\${d.activities.length?\`<div class="timeline">\${d.activities.map(a=>\`<div class="timeline-item"><div class="timeline-dot"></div><div><span>\${fmtDate(a.activity_date)} · \${esc(a.user_name||'Equipe Comercial')}</span><strong>\${nl(a.note)}</strong>\${a.next_contact_date?\`<p>Próximo contato: \${fmtDate(a.next_contact_date)}\${a.next_action?\` · \${esc(a.next_action)}\`:''}</p>\`:''}<div class="timeline-actions"><button class="link-button" data-editactivity="\${a.id}">editar</button><button class="link-button danger-link" data-delactivity="\${a.id}">excluir</button></div></div></div>\`).join('')}</div>\`:'<div class="empty"><strong>Nenhuma conversa registrada.</strong>Adicione o primeiro contato para iniciar a linha do tempo.</div>'}\`;
+    $('#timelineAdd').addEventListener('click',()=>openCrmActivityModal(c.id));
+    $('#printCrmTimeline').addEventListener('click',()=>printCrmClientReport());
+    $('[data-editactivity]',crmPanel()).forEach(x=>x.addEventListener('click',()=>openCrmActivityModal(c.id,d.activities.find(a=>a.id===x.dataset.editactivity))));
+    $('[data-delactivity]',crmPanel()).forEach(x=>x.addEventListener('click',async()=>{if(!confirm('Excluir este registro da linha do tempo?'))return;try{await api(\`/api/commercial/activity/\${x.dataset.delactivity}\`,{method:'DELETE',body:{}});toast('Registro excluído.');await loadCrmClient(c.id);renderCrmTimeline();}catch(err){showError(err)}}));
+  }
+
+  function renderCrmProfile(){
+    const c=state.crmDetail.client;
+    crmPanel().innerHTML=\`<div class="two-col"><div class="card"><span class="label">MARCA / CLIENTE</span><h3>\${esc(c.trade_name)}</h3><div class="rule-list"><div class="rule-row"><div><div class="title">Nome do contato</div><div class="sub">\${esc(c.contact_name)}</div></div></div><div class="rule-row"><div><div class="title">Telefone</div><div class="sub">\${esc(c.phone)}</div></div></div><div class="rule-row"><div><div class="title">E-mail</div><div class="sub">\${esc(c.email||'Não informado')}</div></div></div><div class="rule-row"><div><div class="title">Relacionamento</div><div class="sub">\${crmType(c)||'Não definido'}</div></div></div></div></div><div class="card"><span class="label">DADOS CADASTRAIS</span><h3>\${esc(c.legal_name||'Razão social não informada')}</h3><div class="rule-list"><div class="rule-row"><div><div class="title">CNPJ</div><div class="sub">\${esc(c.cnpj||'Não informado')}</div></div></div><div class="rule-row"><div><div class="title">CEP</div><div class="sub">\${esc(c.cep)}</div></div></div><div class="rule-row"><div><div class="title">Endereço</div><div class="sub">\${esc(c.address)}</div></div></div></div><p>\${nl(c.notes||'')}</p><button class="btn btn-small" id="profileCrmEdit">Editar cadastro</button></div></div>\`;
+    $('#profileCrmEdit').addEventListener('click',()=>openCrmClientModal(c));
+  }
+
+  function renderCrmClientAgenda(){
+    const c=state.crmDetail.client,items=state.crmDetail.activities.filter(a=>a.next_contact_date).sort((a,b)=>String(a.next_contact_date).localeCompare(String(b.next_contact_date)));
+    crmPanel().innerHTML=\`<div class="admin-toolbar"><span class="mini-label">PRÓXIMOS CONTATOS PROGRAMADOS</span><button class="btn btn-dark btn-small" id="agendaClientAdd">+ Agendar / registrar</button></div>\${items.length?\`<div class="agenda-list">\${items.map(a=>\`<div class="agenda-item static"><div class="agenda-date">\${fmtDate(a.next_contact_date)}</div><div><strong>\${esc(a.next_action||'Retomar contato')}</strong><p>Origem: conversa de \${fmtDate(a.activity_date)}</p></div></div>\`).join('')}</div>\`:'<div class="empty"><strong>Nenhum follow-up programado.</strong>Ao registrar uma conversa, defina a próxima data de contato.</div>'}\`;
+    $('#agendaClientAdd').addEventListener('click',()=>openCrmActivityModal(c.id));
+  }
+
+  function openCrmActivityModal(clientId,activity=null,defaultDate=''){
+    const client=(state.crmDetail?.client?.id===clientId?state.crmDetail.client:state.commercial?.clients.find(c=>c.id===clientId));
+    openModal(\`\${modalHead(activity?'Editar contato':'Registrar conversa',client?.trade_name||'AGENDA COMERCIAL')}<form id="crmActivityForm" class="form-grid"><div class="field"><label>Data da conversa<input type="date" name="activity_date" value="\${esc(activity?.activity_date||defaultDate||todayISO())}" required></label></div><div class="field"><label>Próximo contato<input type="date" name="next_contact_date" value="\${esc(activity?.next_contact_date||'')}"></label></div><div class="field full"><label>O que foi conversado<textarea name="note" required>\${esc(activity?.note||'')}</textarea></label></div><div class="field full"><label>Próxima ação<textarea name="next_action" placeholder="Ex.: enviar proposta, ligar novamente, confirmar coleção...">\${esc(activity?.next_action||'')}</textarea></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar no histórico</button></div></form>\`);
+    $('#crmActivityForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());const url=activity?\`/api/commercial/activity/\${activity.id}\`:\`/api/commercial/client/\${clientId}/activity\`;await api(url,{method:activity?'PATCH':'POST',body});closeModal();toast('Histórico atualizado.');await loadCommercial();if(state.view==='commercial-client'){await loadCrmClient(clientId);viewCommercialClient();}else if(state.view==='commercial-agenda')viewCommercialAgenda();else viewCommercialHome();}catch(err){showError(err)}});
+  }
+
+  function openAgendaActivityModal(date){
+    const clients=state.commercial.clients;
+    if(!clients.length){toast('Cadastre uma marca antes de criar um contato.');return;}
+    openModal(\`\${modalHead('Agenda comercial',fmtDate(date))}<form id="agendaActivityForm" class="form-grid"><div class="field full"><label>Marca / cliente<select name="client_id">\${clients.map(c=>\`<option value="\${c.id}">\${esc(c.trade_name)} · \${esc(c.contact_name)}</option>\`).join('')}</select></label></div><div class="field"><label>Data da conversa<input type="date" name="activity_date" value="\${esc(date)}" required></label></div><div class="field"><label>Próximo contato<input type="date" name="next_contact_date"></label></div><div class="field full"><label>O que foi conversado<textarea name="note" required></textarea></label></div><div class="field full"><label>Próxima ação<textarea name="next_action"></textarea></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar na agenda</button></div></form>\`);
+    $('#agendaActivityForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());const id=body.client_id;delete body.client_id;await api(\`/api/commercial/client/\${id}/activity\`,{method:'POST',body});closeModal();toast('Contato salvo na agenda.');await loadCommercial();viewCommercialAgenda();}catch(err){showError(err)}});
+  }
+
+  function calendarHtml(month,activities){
+    const [y,m]=month.split('-').map(Number),first=new Date(y,m-1,1),days=new Date(y,m,0).getDate(),start=first.getDay();
+    const names=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];let html=\`<div class="calendar-head">\${names.map(n=>\`<div>\${n}</div>\`).join('')}</div><div class="calendar-grid">\`;
+    for(let i=0;i<start;i++)html+='<div class="calendar-day empty-day"></div>';
+    for(let day=1;day<=days;day++){const date=\`\${y}-\${String(m).padStart(2,'0')}-\${String(day).padStart(2,'0')}\`;const conv=activities.filter(a=>a.activity_date===date);const follow=activities.filter(a=>a.next_contact_date===date);html+=\`<button class="calendar-day \${date===todayISO()?'today':''}" data-agenda-date="\${date}"><span class="day-num">\${day}</span>\${conv.slice(0,2).map(a=>\`<span class="cal-chip">\${esc(a.trade_name)}</span>\`).join('')}\${follow.slice(0,2).map(a=>\`<span class="cal-chip follow">↗ \${esc(a.trade_name)}</span>\`).join('')}\${conv.length+follow.length>4?\`<small>+\${conv.length+follow.length-4}</small>\`:''}</button>\`;}
+    return html+'</div>';
+  }
+
+  function viewCommercialAgenda(){
+    const d=state.commercial,today=todayISO(),upcoming=d.activities.filter(a=>a.next_contact_date&&a.next_contact_date>=today).sort((a,b)=>String(a.next_contact_date).localeCompare(String(b.next_contact_date))).slice(0,20);
+    content.innerHTML=\`\${pageHead('AGENDA COMERCIAL','Agenda & <em>follow-up.</em>','Clique em uma data para registrar o que foi conversado. O próximo contato também fica programado.',state.crmMonth,'MÊS')}
+      <div class="admin-toolbar"><input type="month" class="search" id="crmMonth" value="\${esc(state.crmMonth)}"><button class="btn btn-dark" id="agendaToday">+ Registrar hoje</button></div>
+      <div class="calendar">\${calendarHtml(state.crmMonth,d.activities)}</div>
+      <div class="section-title"><h2>Próximos contatos</h2><p>Agenda futura de todas as suas marcas.</p></div>\${upcoming.length?\`<div class="agenda-list">\${upcoming.map(a=>\`<button class="agenda-item" data-crm="\${a.client_id}"><div class="agenda-date">\${fmtDate(a.next_contact_date)}</div><div><strong>\${esc(a.trade_name)}</strong><p>\${esc(a.next_action||'Retomar contato')} · último registro \${fmtDate(a.activity_date)}</p></div><span>→</span></button>\`).join('')}</div>\`:'<div class="empty"><strong>Nenhum próximo contato.</strong>Use a agenda para programar os follow-ups.</div>'}\`;
+    $('#crmMonth').addEventListener('change',e=>{state.crmMonth=e.target.value;viewCommercialAgenda();});
+    $('#agendaToday').addEventListener('click',()=>openAgendaActivityModal(todayISO()));
+    $('[data-agenda-date]',content).forEach(x=>x.addEventListener('click',()=>openAgendaActivityModal(x.dataset.agendaDate)));
+    $('[data-crm]',content).forEach(x=>x.addEventListener('click',()=>navigate('commercial-client',x.dataset.crm)));
+  }
+
+  function reportRows(){return crmFilterRows(state.commercial.clients,state.crmReportFilter,'');}
+  function viewCommercialReports(){
+    const rows=reportRows();
+    content.innerHTML=\`\${pageHead('RELATÓRIOS COMERCIAIS','Clientes por <em>canal.</em>','Filtre Evento, Loja ou marcas que trabalham nos dois formatos.',String(rows.length),'CADASTROS')}
+      <div class="report-filter"><button class="btn \${state.crmReportFilter==='all'?'btn-dark':''}" data-reportfilter="all">Todos</button><button class="btn \${state.crmReportFilter==='event'?'btn-dark':''}" data-reportfilter="event">Evento</button><button class="btn \${state.crmReportFilter==='store'?'btn-dark':''}" data-reportfilter="store">Loja</button><button class="btn \${state.crmReportFilter==='both'?'btn-dark':''}" data-reportfilter="both">Evento + Loja</button></div>
+      <div class="metric-grid report-metrics"><div class="metric"><div class="num">\${state.commercial.counts.total}</div><div class="label">Total</div></div><div class="metric blue"><div class="num">\${state.commercial.counts.event}</div><div class="label">Evento</div></div><div class="metric"><div class="num">\${state.commercial.counts.store}</div><div class="label">Loja</div></div><div class="metric"><div class="num">\${state.commercial.counts.both}</div><div class="label">Evento + Loja</div></div></div>
+      <div class="admin-toolbar"><span class="mini-label">RELATÓRIO: \${esc(({all:'Todos',event:'Evento',store:'Loja',both:'Evento + Loja'})[state.crmReportFilter])}</span><div class="inline-actions"><button class="btn btn-small" id="printCrmReport">Imprimir</button><button class="btn btn-dark btn-small" id="exportCrmCsv">Exportar CSV</button></div></div>\${crmClientTable(rows)}\`;
+    $('[data-reportfilter]',content).forEach(b=>b.addEventListener('click',()=>{state.crmReportFilter=b.dataset.reportfilter;viewCommercialReports();}));
+    $('#printCrmReport').addEventListener('click',()=>printCrmList(rows));
+    $('#exportCrmCsv').addEventListener('click',()=>downloadCrmCsv(rows));
+    bindCrmRows();
+  }
+
+  function downloadCrmCsv(rows){
+    const head=['Nome fantasia','Contato','Telefone','E-mail','CEP','Endereço','CNPJ','Razão social','Evento','Loja','Status','Responsável','Último contato','Próximo contato'];
+    const vals=rows.map(c=>[c.trade_name,c.contact_name,c.phone,c.email,c.cep,c.address,c.cnpj,c.legal_name,Number(c.serves_event)===1?'Sim':'Não',Number(c.serves_store)===1?'Sim':'Não',statusLabel(c.status),c.owner_name||state.me.name,c.last_contact||'',c.next_contact||'']);
+    const csv=[head,...vals].map(r=>r.map(v=>\`"\${String(v??'').replace(/"/g,'""')}"\`).join(';')).join('\\n');const blob=new Blob(['\\ufeff'+csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=\`carandai25-relatorio-\${state.crmReportFilter}-\${todayISO()}.csv\`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  }
+  function printWindow(title,body){const w=window.open('','_blank');if(!w)return toast('Permita pop-ups para imprimir o relatório.');w.document.write(\`<!doctype html><html><head><meta charset="utf-8"><title>\${esc(title)}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{font-family:Georgia,serif;font-style:italic;font-weight:400}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid #bbb;text-align:left;padding:8px}.meta{color:#666;font-size:11px}.item{border-bottom:1px solid #aaa;padding:14px 0}.item h3{margin:4px 0}.tag{display:inline-block;border:1px solid #111;padding:3px 6px;margin-right:4px;font-size:10px}</style></head><body><div class="meta">CARANDAÍ 25 · COMERCIAL · \${new Date().toLocaleDateString('pt-BR')}</div>\${body}</body></html>\`);w.document.close();w.focus();setTimeout(()=>w.print(),250);}
+  function printCrmList(rows){printWindow('Relatório Comercial Carandaí 25',\`<h1>Relatório de marcas / clientes</h1><p>\${rows.length} cadastro(s) · filtro: \${esc(({all:'Todos',event:'Evento',store:'Loja',both:'Evento + Loja'})[state.crmReportFilter])}</p><table><thead><tr><th>Marca</th><th>Contato</th><th>Telefone</th><th>Tipo</th><th>Status</th></tr></thead><tbody>\${rows.map(c=>\`<tr><td>\${esc(c.trade_name)}</td><td>\${esc(c.contact_name)}</td><td>\${esc(c.phone)}</td><td>\${Number(c.serves_event)===1?'Evento ':''}\${Number(c.serves_store)===1?'Loja':''}</td><td>\${esc(statusLabel(c.status))}</td></tr>\`).join('')}</tbody></table>\`);}
+  function printCrmClientReport(){const d=state.crmDetail,c=d.client;printWindow(\`Linha do tempo · \${c.trade_name}\`,\`<h1>\${esc(c.trade_name)}</h1><p>\${esc(c.contact_name)} · \${esc(c.phone)}\${c.email?' · '+esc(c.email):''}</p><p><span class="tag">\${Number(c.serves_event)===1?'Evento':''}</span>\${Number(c.serves_store)===1?'<span class="tag">Loja</span>':''} · \${esc(statusLabel(c.status))}</p><h2>Linha do tempo</h2>\${d.activities.map(a=>\`<div class="item"><div class="meta">\${fmtDate(a.activity_date)} · \${esc(a.user_name||'Equipe Comercial')}</div><h3>\${nl(a.note)}</h3>\${a.next_contact_date?\`<p>Próximo contato: \${fmtDate(a.next_contact_date)} · \${esc(a.next_action||'')}</p>\`:''}</div>\`).join('')||'<p>Nenhum contato registrado.</p>'}\`);}
+
+  function viewAdminCommercialUsers(){
+    const users=state.commercialUsers.users||[];
+    content.innerHTML=\`\${pageHead('ACESSO RESTRITO','Equipe <em>Comercial.</em>','Cada usuário tem login e senha próprios e entra somente no CRM Comercial.',String(users.filter(u=>Number(u.active)===1).length),'ATIVOS')}
+      <div class="admin-toolbar"><span class="mini-label">USUÁRIOS COMERCIAIS</span><button class="btn btn-dark" id="newCommercialUser">+ Novo usuário</button></div><div class="brand-table"><div class="commercial-user-line head"><div>Usuário</div><div>E-mail</div><div>Clientes</div><div>Última atividade</div><div>Status</div><div></div></div>\${users.map(u=>\`<div class="commercial-user-line"><div class="name">\${esc(u.name)}</div><div>\${esc(u.email)}</div><div>\${u.client_count||0}</div><div>\${fmtDate(u.last_activity)}</div><div>\${Number(u.active)===1?status('active'):status('inactive')}</div><div><button class="btn btn-small" data-editcommercial="\${u.id}">Editar</button></div></div>\`).join('')||'<div class="empty"><strong>Nenhum usuário comercial.</strong>Crie o primeiro acesso da equipe.</div>'}</div>\`;
+    $('#newCommercialUser').addEventListener('click',()=>openCommercialUserModal());
+    $('[data-editcommercial]',content).forEach(x=>x.addEventListener('click',()=>openCommercialUserModal(users.find(u=>u.id===x.dataset.editcommercial))));
+  }
+  function openCommercialUserModal(user=null){
+    openModal(\`\${modalHead(user?'Editar usuário':'Novo usuário comercial','EQUIPE COMERCIAL')}<form id="commercialUserForm" class="form-grid"><div class="field"><label>Nome<input name="name" value="\${esc(user?.name||'')}" required></label></div><div class="field"><label>E-mail de login<input name="email" type="email" value="\${esc(user?.email||'')}" required></label></div><div class="field full"><label>\${user?'Nova senha':'Senha inicial'}<input name="password" type="password" minlength="8" \${user?'placeholder="Deixe em branco para manter"':'required'}></label></div>\${user?\`<div class="field full"><div class="crm-checks"><label><input type="checkbox" id="commercialActive" \${Number(user.active)===1?'checked':''}> Usuário ativo</label></div></div>\`:''}<div class="field full"><button class="btn btn-dark" type="submit">Salvar usuário</button></div></form>\`);
+    $('#commercialUserForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());if(user){body.new_password=body.password;delete body.password;if(!body.new_password)delete body.new_password;body.active=$('#commercialActive').checked;await api(\`/api/admin/commercial-user/\${user.id}\`,{method:'PATCH',body});}else await api('/api/admin/commercial-users',{method:'POST',body});closeModal();toast('Usuário comercial salvo.');await loadCommercialUsers();viewAdminCommercialUsers();}catch(err){showError(err)}});
+  }
+
   /* ADMIN */
   function viewAdminHome(){
     const a=state.admin,c=a.counts;
     content.innerHTML=`${pageHead('GESTÃO DO PORTAL','Operação <em>Carandaí 25.</em>','Painel interno para administrar o que cada marca vê no próprio login.',String(c.brands),'MARCAS')}
       <section class="hero-panel"><div><span class="kicker">PAINEL INTERNO</span><h2>Uma base única.<br>Cada marca, seu conteúdo.</h2><p>Cadastre marcas, publique contratos e boletos, defina estrutura, aprove documentos e responda mensagens por setor.</p></div><div class="event-side"><strong>05–08 NOV 2026</strong><span>Jockey Club · Rio</span><strong style="margin-top:18px">04 NOV · 13h–19h</strong><span>Montagem</span></div></section>
       <div class="metric-grid"><div class="metric"><div class="num">${c.brands}</div><div class="label">Marcas cadastradas</div></div><div class="metric ${c.openBills?'attention':''}"><div class="num">${c.openBills}</div><div class="label">Boletos em aberto</div></div><div class="metric blue"><div class="num">${c.pendingDocs}</div><div class="label">Documentos pendentes</div></div><div class="metric ${c.unreadMessages?'attention':''}"><div class="num">${c.unreadMessages}</div><div class="label">Mensagens não lidas</div></div></div>
+      <div class="quick-grid" style="margin-top:18px"><button class="quick-card" id="goCrm"><span>CRM COMERCIAL</span><strong>${c.crmClients||0} marcas / clientes</strong><small>${c.commercialUsers||0} usuário(s) comercial(is)</small></button><button class="quick-card" id="goCommercialUsers"><span>EQUIPE COMERCIAL</span><strong>Gerenciar acessos</strong><small>Criar login, senha e desativar usuários.</small></button></div>
       <div class="section-title"><h2>Atenção agora</h2><p>Marcas com maior número de pendências.</p></div>
       ${adminBrandTable(a.brands.slice().sort((x,y)=>(y.pending_docs+y.open_bills+y.unread_messages)-(x.pending_docs+x.open_bills+x.unread_messages)).slice(0,8))}`;
     bindBrandRows();
+    $('#goCrm')?.addEventListener('click',()=>navigate('commercial-home'));
+    $('#goCommercialUsers')?.addEventListener('click',()=>navigate('admin-commercial-users'));
   }
 
   function adminBrandTable(rows){
