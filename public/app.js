@@ -364,7 +364,7 @@
   function crmClientTable(rows){
     return \`<div class="crm-table"><div class="crm-line head"><div>Marca / Cliente</div><div>Contato</div><div>Atuação</div><div>Status</div><div>Último contato</div><div>Próximo</div><div></div></div>\${rows.map(c=>\`<div class="crm-line" data-crm="\${c.id}"><div><div class="name">\${esc(c.trade_name)}</div>\${state.me.role==='admin'&&c.owner_name?\`<div class="seg">Responsável: \${esc(c.owner_name)}</div>\`:''}</div><div><strong>\${esc(c.contact_name)}</strong><span>\${esc(c.phone)}</span></div><div>\${crmType(c)}</div><div>\${status(c.status)}</div><div>\${fmtDate(c.last_contact)}</div><div>\${fmtDate(c.next_contact)}</div><div>→</div></div>\`).join('')||'<div class="empty"><strong>Nenhum cadastro encontrado.</strong>Use “Nova marca / cliente” para começar o histórico comercial.</div>'}</div>\`;
   }
-  function bindCrmRows(){$('[data-crm]',content).forEach(r=>{r.style.cursor='pointer';r.addEventListener('click',()=>{state.crmTab='timeline';navigate('commercial-client',r.dataset.crm)});});}
+  function bindCrmRows(){$$('[data-crm]',content).forEach(r=>{r.style.cursor='pointer';r.addEventListener('click',()=>{state.crmTab='timeline';navigate('commercial-client',r.dataset.crm)});});}
   function crmFilters(){return \`<div class="crm-filterbar"><input class="search" id="crmSearch" placeholder="Buscar marca, contato, telefone ou CNPJ" value="\${esc(state.crmSearch)}"><select id="crmFilter" class="search"><option value="all" \${state.crmFilter==='all'?'selected':''}>Todos</option><option value="event" \${state.crmFilter==='event'?'selected':''}>Evento</option><option value="store" \${state.crmFilter==='store'?'selected':''}>Loja</option><option value="both" \${state.crmFilter==='both'?'selected':''}>Evento + Loja</option></select><button class="btn btn-dark" id="newCrmClient">+ Nova marca / cliente</button></div>\`;}
 
   function viewCommercialHome(){
@@ -379,7 +379,7 @@
     $('#crmHomeNew').addEventListener('click',()=>openCrmClientModal());
     $('#crmHomeAgenda').addEventListener('click',()=>navigate('commercial-agenda'));
     $('#crmHomeReports').addEventListener('click',()=>navigate('commercial-reports'));
-    $('[data-crm]',content).forEach(x=>x.addEventListener('click',()=>navigate('commercial-client',x.dataset.crm)));
+    $$('[data-crm]',content).forEach(x=>x.addEventListener('click',()=>navigate('commercial-client',x.dataset.crm)));
   }
 
   function viewCommercialClients(){
@@ -417,7 +417,7 @@
     content.innerHTML=\`\${pageHead('HISTÓRICO COMERCIAL',esc(c.trade_name),'Cadastro, conversas e agenda desta marca.',statusLabel(c.status),'STATUS')}
       <div class="crm-client-head"><div><div class="crm-type-wrap">\${crmType(c)}</div><h2>\${esc(c.contact_name)}</h2><p>\${esc(c.phone)}\${c.email?\` · \${esc(c.email)}\`:''}</p></div><div class="inline-actions"><button class="btn btn-dark" id="addCrmActivity">+ Registrar contato</button><button class="btn" id="editCrmClient">Editar cadastro</button></div></div>
       <div class="admin-tabs">\${[['timeline','Linha do tempo'],['profile','Cadastro'],['agenda','Agenda']].map(([id,l])=>\`<button class="admin-tab \${state.crmTab===id?'active':''}" data-crmtab="\${id}">\${l}</button>\`).join('')}</div><div id="crmPanel" class="admin-panel"></div>\`;
-    $('[data-crmtab]',content).forEach(x=>x.addEventListener('click',()=>{state.crmTab=x.dataset.crmtab;renderCrmTab();}));
+    $$('[data-crmtab]',content).forEach(x=>x.addEventListener('click',()=>{state.crmTab=x.dataset.crmtab;renderCrmTab();}));
     $('#addCrmActivity').addEventListener('click',()=>openCrmActivityModal(c.id));
     $('#editCrmClient').addEventListener('click',()=>openCrmClientModal(c));
     renderCrmTab();
@@ -429,8 +429,8 @@
     crmPanel().innerHTML=\`<div class="admin-toolbar"><span class="mini-label">LINHA DO TEMPO · \${d.activities.length} REGISTRO(S)</span><div class="inline-actions"><button class="btn btn-small" id="printCrmTimeline">Imprimir relatório</button><button class="btn btn-dark btn-small" id="timelineAdd">+ Novo contato</button></div></div>\${d.activities.length?\`<div class="timeline">\${d.activities.map(a=>\`<div class="timeline-item"><div class="timeline-dot"></div><div><span>\${fmtDate(a.activity_date)} · \${esc(a.user_name||'Equipe Comercial')}</span><strong>\${nl(a.note)}</strong>\${a.next_contact_date?\`<p>Próximo contato: \${fmtDate(a.next_contact_date)}\${a.next_action?\` · \${esc(a.next_action)}\`:''}</p>\`:''}<div class="timeline-actions"><button class="link-button" data-editactivity="\${a.id}">editar</button><button class="link-button danger-link" data-delactivity="\${a.id}">excluir</button></div></div></div>\`).join('')}</div>\`:'<div class="empty"><strong>Nenhuma conversa registrada.</strong>Adicione o primeiro contato para iniciar a linha do tempo.</div>'}\`;
     $('#timelineAdd').addEventListener('click',()=>openCrmActivityModal(c.id));
     $('#printCrmTimeline').addEventListener('click',()=>printCrmClientReport());
-    $('[data-editactivity]',crmPanel()).forEach(x=>x.addEventListener('click',()=>openCrmActivityModal(c.id,d.activities.find(a=>a.id===x.dataset.editactivity))));
-    $('[data-delactivity]',crmPanel()).forEach(x=>x.addEventListener('click',async()=>{if(!confirm('Excluir este registro da linha do tempo?'))return;try{await api(\`/api/commercial/activity/\${x.dataset.delactivity}\`,{method:'DELETE',body:{}});toast('Registro excluído.');await loadCrmClient(c.id);renderCrmTimeline();}catch(err){showError(err)}}));
+    $$('[data-editactivity]',crmPanel()).forEach(x=>x.addEventListener('click',()=>openCrmActivityModal(c.id,d.activities.find(a=>a.id===x.dataset.editactivity))));
+    $$('[data-delactivity]',crmPanel()).forEach(x=>x.addEventListener('click',async()=>{if(!confirm('Excluir este registro da linha do tempo?'))return;try{await api(\`/api/commercial/activity/\${x.dataset.delactivity}\`,{method:'DELETE',body:{}});toast('Registro excluído.');await loadCrmClient(c.id);renderCrmTimeline();}catch(err){showError(err)}}));
   }
 
   function renderCrmProfile(){
@@ -474,8 +474,8 @@
       <div class="section-title"><h2>Próximos contatos</h2><p>Agenda futura de todas as suas marcas.</p></div>\${upcoming.length?\`<div class="agenda-list">\${upcoming.map(a=>\`<button class="agenda-item" data-crm="\${a.client_id}"><div class="agenda-date">\${fmtDate(a.next_contact_date)}</div><div><strong>\${esc(a.trade_name)}</strong><p>\${esc(a.next_action||'Retomar contato')} · último registro \${fmtDate(a.activity_date)}</p></div><span>→</span></button>\`).join('')}</div>\`:'<div class="empty"><strong>Nenhum próximo contato.</strong>Use a agenda para programar os follow-ups.</div>'}\`;
     $('#crmMonth').addEventListener('change',e=>{state.crmMonth=e.target.value;viewCommercialAgenda();});
     $('#agendaToday').addEventListener('click',()=>openAgendaActivityModal(todayISO()));
-    $('[data-agenda-date]',content).forEach(x=>x.addEventListener('click',()=>openAgendaActivityModal(x.dataset.agendaDate)));
-    $('[data-crm]',content).forEach(x=>x.addEventListener('click',()=>navigate('commercial-client',x.dataset.crm)));
+    $$('[data-agenda-date]',content).forEach(x=>x.addEventListener('click',()=>openAgendaActivityModal(x.dataset.agendaDate)));
+    $$('[data-crm]',content).forEach(x=>x.addEventListener('click',()=>navigate('commercial-client',x.dataset.crm)));
   }
 
   function reportRows(){return crmFilterRows(state.commercial.clients,state.crmReportFilter,'');}
@@ -485,7 +485,7 @@
       <div class="report-filter"><button class="btn \${state.crmReportFilter==='all'?'btn-dark':''}" data-reportfilter="all">Todos</button><button class="btn \${state.crmReportFilter==='event'?'btn-dark':''}" data-reportfilter="event">Evento</button><button class="btn \${state.crmReportFilter==='store'?'btn-dark':''}" data-reportfilter="store">Loja</button><button class="btn \${state.crmReportFilter==='both'?'btn-dark':''}" data-reportfilter="both">Evento + Loja</button></div>
       <div class="metric-grid report-metrics"><div class="metric"><div class="num">\${state.commercial.counts.total}</div><div class="label">Total</div></div><div class="metric blue"><div class="num">\${state.commercial.counts.event}</div><div class="label">Evento</div></div><div class="metric"><div class="num">\${state.commercial.counts.store}</div><div class="label">Loja</div></div><div class="metric"><div class="num">\${state.commercial.counts.both}</div><div class="label">Evento + Loja</div></div></div>
       <div class="admin-toolbar"><span class="mini-label">RELATÓRIO: \${esc(({all:'Todos',event:'Evento',store:'Loja',both:'Evento + Loja'})[state.crmReportFilter])}</span><div class="inline-actions"><button class="btn btn-small" id="printCrmReport">Imprimir</button><button class="btn btn-dark btn-small" id="exportCrmCsv">Exportar CSV</button></div></div>\${crmClientTable(rows)}\`;
-    $('[data-reportfilter]',content).forEach(b=>b.addEventListener('click',()=>{state.crmReportFilter=b.dataset.reportfilter;viewCommercialReports();}));
+    $$('[data-reportfilter]',content).forEach(b=>b.addEventListener('click',()=>{state.crmReportFilter=b.dataset.reportfilter;viewCommercialReports();}));
     $('#printCrmReport').addEventListener('click',()=>printCrmList(rows));
     $('#exportCrmCsv').addEventListener('click',()=>downloadCrmCsv(rows));
     bindCrmRows();
