@@ -196,6 +196,10 @@
   async function loadStaff(){state.staff=await api('/api/staff/overview');state.csrf=state.staff.csrf||state.csrf;}
   async function loadStaffBrand(id){if(!id)throw new Error('Selecione uma marca.');state.staffDetail=await api(`/api/staff/brand/${encodeURIComponent(id)}`);state.csrf=state.staffDetail.csrf||state.csrf;}
   async function loadStaffUsers(){state.staffUsers=await api('/api/admin/staff-users');state.csrf=state.staffUsers.csrf||state.csrf;}
+  async function reloadManagedBrand(id){
+    if(state.me.role==='finance'){await loadStaffBrand(id);state.brandDetail=state.staffDetail;}
+    else await loadAdminBrand(id);
+  }
   async function loadCommercial(){state.commercial=await api('/api/commercial/overview');state.csrf=state.commercial.csrf||state.csrf;}
   async function loadCrmClient(id){if(!id)throw new Error('Selecione uma marca/cliente.');state.crmDetail=await api(`/api/commercial/client/${encodeURIComponent(id)}`);state.csrf=state.crmDetail.csrf||state.csrf;}
   async function loadCommercialUsers(){state.commercialUsers=await api('/api/admin/commercial-users');state.csrf=state.commercialUsers.csrf||state.csrf;}
@@ -543,19 +547,35 @@
   }
   function viewStaffBrand(){
     const d=state.staffDetail,b=d.brand,finance=state.me.role==='finance';
-    content.innerHTML=\`\${pageHead(finance?'FINANCEIRO DA MARCA':'MARKETING DA MARCA',esc(b.name),finance?'Contrato, boletos e conversa financeira.':'Contato e conversa com o Marketing.',b.segment||'—','SEGMENTO')}
+    if(finance){
+      state.brandDetail=d;
+      const tab=state.adminTab==='bills'?'bills':state.adminTab==='messages'?'messages':'contract';
+      state.adminTab=tab;
+      content.innerHTML=\`\${pageHead('FINANCEIRO DA MARCA',esc(b.name),'Contrato, boletos e conversa financeira.',b.segment||'—','SEGMENTO')}
+        <div class="two-col"><div class="card"><span class="label">CONTATO</span><h3>\${esc(b.contact_name||'—')}</h3><p>\${esc(b.contact_email||'')} · \${esc(b.phone||'')}</p></div><div class="card"><span class="label">CADASTRO</span><h3>\${esc(b.legal_name||'Razão social não informada')}</h3><p>CNPJ: \${esc(b.cnpj||'Não informado')}</p></div></div>
+        <div class="admin-tabs">\${[['contract','Contrato'],['bills','Boletos'],['messages','Mensagens']].map(([id,l])=>\`<button class="admin-tab \${state.adminTab===id?'active':''}" data-stafftab="\${id}">\${l}</button>\`).join('')}</div>
+        <div id="adminPanel" class="admin-panel"></div>\`;
+      $$('[data-stafftab]',content).forEach(x=>x.addEventListener('click',()=>{state.adminTab=x.dataset.stafftab;$$('[data-stafftab]',content).forEach(t=>t.classList.toggle('active',t.dataset.stafftab===state.adminTab));renderFinanceTab();}));
+      renderFinanceTab();return;
+    }
+    content.innerHTML=\`\${pageHead('MARKETING DA MARCA',esc(b.name),'Contato e conversa com o Marketing.',b.segment||'—','SEGMENTO')}
       <div class="two-col"><div class="card"><span class="label">CONTATO</span><h3>\${esc(b.contact_name||'—')}</h3><p>\${esc(b.contact_email||'')} · \${esc(b.phone||'')}</p><p>\${esc(b.address||'')}</p></div><div class="card"><span class="label">CADASTRO</span><h3>\${esc(b.legal_name||'Razão social não informada')}</h3><p>CNPJ: \${esc(b.cnpj||'Não informado')}</p></div></div>
-      \${finance?staffFinanceSections(d):''}
-      <div class="section-title"><h2>Mensagens · \${esc(d.sector)}</h2><p>Histórico exclusivo do seu setor.</p></div><div id="staffMessageArea">\${staffMessageLayout(d.messages,d.sector)}</div>\`;
-    bindStaffFinance(d);bindStaffMessages(d);
+      <div class="section-title"><h2>Mensagens · \${esc(d.sector)}</h2><p>Histórico exclusivo do Marketing.</p></div><div id="staffMessageArea">\${staffMessageLayout(d.messages,d.sector)}</div>\`;
+    bindStaffMessages(d);
   }
-  function staffFinanceSections(d){
-    const c=d.contract||{},generated=c.generated_file||c.file,signed=c.signed_file;
-    return \`<div class="section-title"><h2>Contrato & financeiro</h2><p>Acesso operacional do Financeiro.</p></div><div class="two-col"><div class="card"><span class="label">CONTRATO</span><h3 class="contract-file-name">\${generated?esc(generated.original_name):'Ainda não gerado'}</h3><p>\${signed?'Via assinada disponível.':'Via assinada ainda não salva.'}</p><div class="inline-actions">\${generated?\`<button class="btn btn-small" id="staffOpenContract">Abrir contrato</button>\`:''}\${signed?\`<button class="btn btn-small" id="staffOpenSigned">Abrir assinado</button>\`:''}</div></div><div class="card"><span class="label">BOLETOS</span><h3>\${d.bills?.filter(x=>!['paid','cancelled'].includes(x.status)).length||0} em aberto</h3><div class="rule-list">\${(d.bills||[]).map(x=>\`<div class="rule-row"><div><div class="title">\${esc(x.label)}</div><div class="sub">\${fmtDate(x.due_date)} · \${fmtMoney(x.amount_cents)}</div></div><div>\${status(x.status)}</div></div>\`).join('')||'<p>Nenhum boleto cadastrado.</p>'}</div></div></div>\`;
+  function renderFinanceTab(){
+    state.brandDetail=state.staffDetail;
+    if(state.adminTab==='bills')renderAdminBills();
+    else if(state.adminTab==='messages')renderFinanceMessages();
+    else renderAdminContract();
   }
-  function bindStaffFinance(d){if(state.me.role!=='finance')return;$('#staffOpenContract')?.addEventListener('click',()=>openFile((d.contract?.generated_file||d.contract?.file)?.id));$('#staffOpenSigned')?.addEventListener('click',()=>openFile(d.contract?.signed_file?.id));}
+  function renderFinanceMessages(){
+    const d=state.staffDetail;
+    adminPanel().innerHTML=staffMessageLayout(d.messages,d.sector);
+    bindStaffMessages(d);
+  }
   function staffMessageLayout(msgs,sector){return \`<div class="thread standalone"><div class="messages" id="staffThreadMessages">\${msgs.length?msgs.map(m=>\`<div class="bubble \${m.sender_role==='admin'?'mine':''}"><div class="meta">\${esc(m.sender_name)} · \${fmtDateTime(m.created_at)}</div><p>\${nl(m.body)}</p></div>\`).join(''):'<div class="empty"><strong>Nenhuma mensagem ainda.</strong>Inicie a conversa abaixo.</div>'}</div><form class="message-form" id="staffMessageForm"><textarea id="staffMessageText" placeholder="Escreva para a marca pelo setor \${esc(sector)}..." required></textarea><button class="btn btn-dark" type="submit">Enviar</button></form></div>\`;}
-  function bindStaffMessages(d){$('#staffMessageForm')?.addEventListener('submit',async e=>{e.preventDefault();const body=$('#staffMessageText').value.trim();if(!body)return;try{await api(\`/api/staff/brand/\${d.brand.id}/message\`,{method:'POST',body:{body}});toast('Mensagem enviada.');await loadStaffBrand(d.brand.id);viewStaffBrand();}catch(err){showError(err)}});const tm=$('#staffThreadMessages');if(tm)tm.scrollTop=tm.scrollHeight;}
+  function bindStaffMessages(d){$('#staffMessageForm')?.addEventListener('submit',async e=>{e.preventDefault();const body=$('#staffMessageText').value.trim();if(!body)return;try{await api(\`/api/staff/brand/\${d.brand.id}/message\`,{method:'POST',body:{body}});toast('Mensagem enviada.');await loadStaffBrand(d.brand.id);if(state.me.role==='finance'){state.brandDetail=state.staffDetail;renderFinanceMessages();}else viewStaffBrand();}catch(err){showError(err)}});const tm=$('#staffThreadMessages');if(tm)tm.scrollTop=tm.scrollHeight;}
 
 
 
@@ -565,7 +585,7 @@
     content.innerHTML=`${pageHead('GESTÃO DO PORTAL','Operação <em>Carandaí 25.</em>','Painel interno para administrar o que cada marca vê no próprio login.',String(c.brands),'MARCAS')}
       <section class="hero-panel"><div><span class="kicker">PAINEL INTERNO</span><h2>Uma base única.<br>Cada marca, seu conteúdo.</h2><p>Cadastre marcas, publique contratos e boletos, defina estrutura, aprove documentos e responda mensagens por setor.</p></div><div class="event-side"><strong>05–08 NOV 2026</strong><span>Jockey Club · Rio</span><strong style="margin-top:18px">04 NOV · 13h–19h</strong><span>Montagem</span></div></section>
       <div class="metric-grid"><div class="metric"><div class="num">${c.brands}</div><div class="label">Marcas cadastradas</div></div><div class="metric ${c.openBills?'attention':''}"><div class="num">${c.openBills}</div><div class="label">Boletos em aberto</div></div><div class="metric blue"><div class="num">${c.pendingDocs}</div><div class="label">Documentos pendentes</div></div><div class="metric ${c.unreadMessages?'attention':''}"><div class="num">${c.unreadMessages}</div><div class="label">Mensagens não lidas</div></div></div>
-      <div class="quick-grid" style="margin-top:18px"><button class="quick-card" id="goCrm"><span>CRM COMERCIAL</span><strong>${c.crmClients||0} marcas / clientes</strong><small>${c.commercialUsers||0} usuário(s) comercial(is)</small></button><button class="quick-card" id="goStaffUsers"><span>USUÁRIOS E ACESSOS</span><strong>Master + setores</strong><small>Comercial, Financeiro e Marketing.</small></button></div>
+      <div class="quick-grid" style="margin-top:18px"><button class="quick-card" id="goCrm"><span>CRM COMERCIAL</span><strong>${c.crmClients||0} marcas / clientes</strong><small>${c.staffUsers||0} usuário(s) interno(s)</small></button><button class="quick-card" id="goStaffUsers"><span>USUÁRIOS E ACESSOS</span><strong>Master + setores</strong><small>Comercial, Financeiro e Marketing.</small></button></div>
       <div class="section-title"><h2>Atenção agora</h2><p>Marcas com maior número de pendências.</p></div>
       ${adminBrandTable(a.brands.slice().sort((x,y)=>(y.pending_docs+y.open_bills+y.unread_messages)-(x.pending_docs+x.open_bills+x.unread_messages)).slice(0,8))}`;
     bindBrandRows();
@@ -654,8 +674,8 @@
     const sentInfo=c.email_status==='sent' ? `Enviado em ${fmtDateTime(c.emailed_at)} para ${esc(c.emailed_to||recipient)}${c.email_provider?` · ${esc(c.email_provider)}`:''}` : c.email_status==='error' ? `Falha no último envio: ${esc(c.email_error||'verifique a configuração de e-mail')}` : 'Ainda não houve envio registrado.';
     adminPanel().innerHTML=`
       <div class="two-col">
-        <div class="card"><span class="label">CONTRATO PARA ASSINATURA</span><h3>${generated?esc(generated.original_name):'Ainda não gerado'}</h3><p>${generated?`Gerado automaticamente${c.generated_at?` em ${fmtDateTime(c.generated_at)}`:''}.`:'Preencha os dados ao lado e gere o contrato.'}</p>${generated?`<button class="btn btn-dark btn-small" id="adminOpenGenerated">Abrir contrato gerado</button>`:''}<div class="note" style="margin-top:14px">Este é o PDF que deve ser conferido e enviado para assinatura digital.</div></div>
-        <div class="card"><span class="label">CONTRATO ASSINADO</span><h3 class="signed-contract-title">Nenhuma via assinada salva</h3><p>${signed?`Assinatura registrada em ${fmtDate(c.signed_at)}.`:'Depois que a assinatura for concluída na Contraktor, salve aqui o PDF assinado.'}</p>${signed?`<button class="btn btn-dark btn-small" id="adminOpenSigned">Abrir contrato assinado</button>`:''}<form id="signedContractForm" class="form-grid" style="margin-top:16px"><div class="field full"><label>PDF assinado<input type="file" id="signedContractFile" accept="application/pdf" required></label></div><div class="field full"><label>Data da assinatura<input type="date" name="signed_at" value="${esc(c.signed_at?.slice(0,10)||todayInput())}"></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar contrato assinado</button></div></form></div>
+        <div class="card"><span class="label">CONTRATO PARA ASSINATURA</span><h3 class="contract-file-name">${generated?esc(generated.original_name):'Ainda não gerado'}</h3><p>${generated?`Gerado automaticamente${c.generated_at?` em ${fmtDateTime(c.generated_at)}`:''}.`:'Preencha os dados ao lado e gere o contrato.'}</p>${generated?`<button class="btn btn-dark btn-small" id="adminOpenGenerated">Abrir contrato gerado</button>`:''}<div class="note" style="margin-top:14px">Este é o PDF que deve ser conferido e enviado para assinatura digital.</div></div>
+        <div class="card"><span class="label">CONTRATO ASSINADO</span><h3 class="signed-contract-title">${signed?esc(signed.original_name):'Nenhuma via assinada salva'}</h3><p>${signed?`Assinatura registrada em ${fmtDate(c.signed_at)}.`:'Depois que a assinatura for concluída na Contraktor, salve aqui o PDF assinado.'}</p>${signed?`<button class="btn btn-dark btn-small" id="adminOpenSigned">Abrir contrato assinado</button>`:''}<form id="signedContractForm" class="form-grid" style="margin-top:16px"><div class="field full"><label>PDF assinado<input type="file" id="signedContractFile" accept="application/pdf" required></label></div><div class="field full"><label>Data da assinatura<input type="date" name="signed_at" value="${esc(c.signed_at?.slice(0,10)||todayInput())}"></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar contrato assinado</button></div></form></div>
       </div>
       <div class="section-title"><h2>Gerar / atualizar contrato</h2><p>O PDF é montado automaticamente a partir dos dados abaixo e do modelo oficial do Carandaí 25.</p></div>
       <div class="card"><form id="generateContractForm" class="form-grid">
@@ -676,9 +696,9 @@
     bindInstallmentCount($('#generateContractForm'));
     $('#adminOpenGenerated')?.addEventListener('click',()=>openFile(generated?.id));
     $('#adminOpenSigned')?.addEventListener('click',()=>openFile(signed?.id));
-    $('#generateContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());await api(`/api/admin/brand/${b.id}/contract/generate`,{method:'POST',body});toast('Contrato gerado e salvo automaticamente.');await loadAdminBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
-    $('#signedContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const f=$('#signedContractFile').files[0];if(!f)return toast('Selecione o PDF assinado.');const file=await fileData(f);const signed_at=new FormData(e.target).get('signed_at');await api(`/api/admin/brand/${b.id}/contract/signed`,{method:'POST',body:{file,signed_at}});toast('Contrato assinado salvo separadamente.');await loadAdminBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
-    $('#sendContractEmail')?.addEventListener('click',async()=>{const to=$('#contractEmailTo').value.trim();if(!to)return toast('Informe o e-mail cadastrado da marca.');if(!confirm(`Enviar o contrato de ${b.name} para ${to}?`))return;try{const r=await api(`/api/admin/brand/${b.id}/contract/email`,{method:'POST',body:{to}});toast(`Contrato enviado para ${r.to}.`);await loadAdminBrand(b.id);renderAdminContract();}catch(err){await loadAdminBrand(b.id).catch(()=>{});renderAdminContract();showError(err)}});
+    $('#generateContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());await api(`/api/admin/brand/${b.id}/contract/generate`,{method:'POST',body});toast('Contrato gerado e salvo automaticamente.');await reloadManagedBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
+    $('#signedContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const f=$('#signedContractFile').files[0];if(!f)return toast('Selecione o PDF assinado.');const file=await fileData(f);const signed_at=new FormData(e.target).get('signed_at');await api(`/api/admin/brand/${b.id}/contract/signed`,{method:'POST',body:{file,signed_at}});toast('Contrato assinado salvo separadamente.');await reloadManagedBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
+    $('#sendContractEmail')?.addEventListener('click',async()=>{const to=$('#contractEmailTo').value.trim();if(!to)return toast('Informe o e-mail cadastrado da marca.');if(!confirm(`Enviar o contrato de ${b.name} para ${to}?`))return;try{const r=await api(`/api/admin/brand/${b.id}/contract/email`,{method:'POST',body:{to}});toast(`Contrato enviado para ${r.to}.`);await reloadManagedBrand(b.id);renderAdminContract();}catch(err){await reloadManagedBrand(b.id).catch(()=>{});renderAdminContract();showError(err)}});
     $('#testContractEmail')?.addEventListener('click',async()=>{const to=$('#contractEmailTo').value.trim();if(!to)return toast('Informe o e-mail cadastrado da marca.');try{const r=await api('/api/admin/email/test',{method:'POST',body:{to}});toast(`E-mail de teste enviado via ${r.provider||'serviço configurado'}.`);}catch(err){showError(err)}});
   }
 
@@ -688,12 +708,12 @@
     $('#addBill').addEventListener('click',()=>openBillModal());
     $$('[data-file]',adminPanel()).forEach(x=>x.addEventListener('click',()=>openFile(x.dataset.file)));
     $$('[data-editbill]',adminPanel()).forEach(x=>x.addEventListener('click',()=>openBillModal(d.bills.find(b=>b.id===x.dataset.editbill))));
-    $$('[data-delbill]',adminPanel()).forEach(x=>x.addEventListener('click',async()=>{if(!confirm('Excluir este boleto?'))return;try{await api(`/api/admin/bill/${x.dataset.delbill}`,{method:'DELETE',body:{}});toast('Boleto excluído.');await loadAdminBrand(b.id);renderAdminBills();}catch(err){showError(err)}}));
+    $$('[data-delbill]',adminPanel()).forEach(x=>x.addEventListener('click',async()=>{if(!confirm('Excluir este boleto?'))return;try{await api(`/api/admin/bill/${x.dataset.delbill}`,{method:'DELETE',body:{}});toast('Boleto excluído.');await reloadManagedBrand(b.id);renderAdminBills();}catch(err){showError(err)}}));
   }
   function openBillModal(bill=null){
     const b=state.brandDetail.brand;
     openModal(`${modalHead(bill?'Editar boleto':'Adicionar boleto','FINANCEIRO')}<form id="billForm" class="form-grid"><div class="field"><label>Parcela<input name="installment" type="number" min="1" value="${bill?.installment||1}"></label></div><div class="field"><label>Status<select name="status">${['pending','paid','overdue','cancelled'].map(s=>`<option value="${s}" ${bill?.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}</select></label></div><div class="field full"><label>Descrição<input name="label" value="${esc(bill?.label||'Parcela · Espaço Jockey Club')}" required></label></div><div class="field"><label>Valor (R$)<input name="amount" type="number" min="0" step="0.01" value="${bill?((bill.amount_cents||0)/100).toFixed(2):''}" required></label></div><div class="field"><label>Vencimento<input name="due_date" type="date" value="${esc(bill?.due_date||'')}"></label></div><div class="field full"><label>PDF do boleto<input id="billFile" type="file" accept="application/pdf"></label><small>${bill?.file?'Se não escolher outro PDF, o atual é mantido.':'Opcional: pode cadastrar os dados agora e anexar o PDF depois.'}</small></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar boleto</button></div></form>`);
-    $('#billForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());const f=$('#billFile').files[0];if(f)body.file=await fileData(f);const url=bill?`/api/admin/bill/${bill.id}`:`/api/admin/brand/${b.id}/bills`;await api(url,{method:bill?'PATCH':'POST',body});closeModal();toast('Boleto salvo.');await loadAdminBrand(b.id);renderAdminBills();}catch(err){showError(err)}});
+    $('#billForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());const f=$('#billFile').files[0];if(f)body.file=await fileData(f);const url=bill?`/api/admin/bill/${bill.id}`:`/api/admin/brand/${b.id}/bills`;await api(url,{method:bill?'PATCH':'POST',body});closeModal();toast('Boleto salvo.');await reloadManagedBrand(b.id);renderAdminBills();}catch(err){showError(err)}});
   }
 
   function renderAdminStructure(){
