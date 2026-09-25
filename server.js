@@ -268,9 +268,48 @@ function initSchema(){
       created_at TEXT NOT NULL,
       FOREIGN KEY(brand_id) REFERENCES brands(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS crm_clients (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT,
+      trade_name TEXT NOT NULL,
+      contact_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT DEFAULT '',
+      cep TEXT NOT NULL DEFAULT '',
+      address TEXT NOT NULL DEFAULT '',
+      cnpj TEXT DEFAULT '',
+      legal_name TEXT DEFAULT '',
+      serves_event INTEGER NOT NULL DEFAULT 0,
+      serves_store INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'prospect',
+      notes TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS crm_activities (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      activity_date TEXT NOT NULL,
+      note TEXT NOT NULL,
+      next_contact_date TEXT,
+      next_action TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(client_id) REFERENCES crm_clients(id) ON DELETE CASCADE,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
     CREATE INDEX IF NOT EXISTS idx_bills_brand ON bills(brand_id);
     CREATE INDEX IF NOT EXISTS idx_req_brand ON requirements(brand_id);
     CREATE INDEX IF NOT EXISTS idx_msg_brand ON messages(brand_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_owner ON crm_clients(owner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_type_event ON crm_clients(serves_event);
+    CREATE INDEX IF NOT EXISTS idx_crm_type_store ON crm_clients(serves_store);
+    CREATE INDEX IF NOT EXISTS idx_crm_activity_client ON crm_activities(client_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_activity_date ON crm_activities(activity_date);
+    CREATE INDEX IF NOT EXISTS idx_crm_next_contact ON crm_activities(next_contact_date);
   `);
 
   // Migração segura para bancos já existentes no Railway.
@@ -281,6 +320,8 @@ function initSchema(){
   const userCols = new Set(db.prepare('PRAGMA table_info(users)').all().map(x=>x.name));
   if(!userCols.has('must_change_password')) db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
   if(!userCols.has('initial_password_enc')) db.exec('ALTER TABLE users ADD COLUMN initial_password_enc TEXT');
+  if(!userCols.has('access_scope')) db.exec("ALTER TABLE users ADD COLUMN access_scope TEXT DEFAULT 'full'");
+  if(!userCols.has('active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
 
   const contractCols = new Set(db.prepare('PRAGMA table_info(contracts)').all().map(x=>x.name));
   const contractMigrations=[
@@ -426,10 +467,11 @@ function clearSessionCookie(res){ res.setHeader('Set-Cookie','c25_session=; Http
 function getSession(req){
   const token=parseCookies(req).c25_session;
   if(!token) return null;
-  const row=db.prepare(`SELECT s.id AS session_id,s.csrf,s.expires_at,u.id AS user_id,u.brand_id,u.name,u.email,u.role,u.must_change_password
+  const row=db.prepare(`SELECT s.id AS session_id,s.csrf,s.expires_at,u.id AS user_id,u.brand_id,u.name,u.email,u.role AS db_role,u.must_change_password,COALESCE(u.access_scope,'full') AS access_scope,COALESCE(u.active,1) AS active
     FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?`).get(sha256(token));
-  if(!row) return null;
+  if(!row || Number(row.active)===0) return null;
   if(new Date(row.expires_at).getTime()<Date.now()){ db.prepare('DELETE FROM sessions WHERE id=?').run(row.session_id); return null; }
+  row.role=(row.db_role==='admin' && row.access_scope==='commercial')?'commercial':row.db_role;
   return row;
 }
 function requireAuth(req,res,roles,opts={}){
@@ -678,11 +720,59 @@ function adminBrandList(){
   return rows.map(r=>({...r,structure:safeJson(r.structure_json,{})}));
 }
 
+
+function commercialUserList(){
+  return db.prepare(`SELECT u.id,u.name,u.email,COALESCE(u.active,1) AS active,u.created_at,
+    (SELECT COUNT(*) FROM crm_clients c WHERE c.owner_user_id=u.id) AS client_count,
+    (SELECT MAX(a.activity_date) FROM crm_activities a JOIN crm_clients c ON c.id=a.client_id WHERE c.owner_user_id=u.id) AS last_activity
+    FROM users u WHERE u.role='admin' AND COALESCE(u.access_scope,'full')='commercial' ORDER BY u.name`).all();
+}
+
+function createCommercialUser({name,email,password}){
+  const id=uid();
+  db.prepare(`INSERT INTO users(id,brand_id,name,email,password_hash,role,access_scope,active,must_change_password,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`)
+    .run(id,null,text(name),normalizeEmail(email),passwordHash(password),'admin','commercial',1,0,nowISO());
+  return id;
+}
+
+function crmWhereFor(s, alias='c'){
+  return s.role==='admin' ? {sql:'1=1',params:[]} : {sql:`${alias}.owner_user_id=?`,params:[s.user_id]};
+}
+
+function crmClientFor(s,id){
+  const w=crmWhereFor(s,'c');
+  return db.prepare(`SELECT c.*,u.name AS owner_name,u.email AS owner_email FROM crm_clients c LEFT JOIN users u ON u.id=c.owner_user_id WHERE c.id=? AND ${w.sql}`).get(id,...w.params)||null;
+}
+
+function crmActivitiesFor(s,clientId){
+  const client=crmClientFor(s,clientId); if(!client) return null;
+  return db.prepare(`SELECT a.*,u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.client_id=? ORDER BY a.activity_date DESC,a.created_at DESC`).all(clientId);
+}
+
+function crmOverview(s){
+  const w=crmWhereFor(s,'c');
+  const clients=db.prepare(`SELECT c.*,u.name AS owner_name,
+    (SELECT MAX(a.activity_date) FROM crm_activities a WHERE a.client_id=c.id) AS last_contact,
+    (SELECT MIN(a.next_contact_date) FROM crm_activities a WHERE a.client_id=c.id AND a.next_contact_date IS NOT NULL AND a.next_contact_date>=date('now')) AS next_contact
+    FROM crm_clients c LEFT JOIN users u ON u.id=c.owner_user_id WHERE ${w.sql} ORDER BY c.trade_name COLLATE NOCASE`).all(...w.params);
+  const activities=db.prepare(`SELECT a.*,c.trade_name,c.contact_name,c.owner_user_id,u.name AS user_name
+    FROM crm_activities a JOIN crm_clients c ON c.id=a.client_id LEFT JOIN users u ON u.id=a.user_id
+    WHERE ${w.sql} ORDER BY a.activity_date DESC,a.created_at DESC LIMIT 2500`).all(...w.params);
+  const counts={
+    total:clients.length,
+    event:clients.filter(c=>Number(c.serves_event)===1).length,
+    store:clients.filter(c=>Number(c.serves_store)===1).length,
+    both:clients.filter(c=>Number(c.serves_event)===1&&Number(c.serves_store)===1).length,
+    prospect:clients.filter(c=>c.status==='prospect').length
+  };
+  return {counts,clients,activities,commercialUsers:s.role==='admin'?commercialUserList():[],csrf:s.csrf};
+}
+
 async function api(req,res,url){
   const pathname=url.pathname;
 
   if(pathname==='/api/health' && req.method==='GET'){
-    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.8.0',storage:STORAGE_ROOT});
+    return json(res,200,{ok:true,service:'carandai25-portal',version:'5.1.0',storage:STORAGE_ROOT});
   }
 
   if(pathname==='/api/login' && req.method==='POST'){
@@ -691,7 +781,7 @@ async function api(req,res,url){
     const body=await readJson(req);
     const email=normalizeEmail(body.email); const password=String(body.password||'');
     const u=db.prepare('SELECT * FROM users WHERE email=?').get(email);
-    if(!u || !passwordVerify(password,u.password_hash)) return json(res,401,{error:'E-mail ou senha inválidos'});
+    if(!u || Number(u.active??1)===0 || !passwordVerify(password,u.password_hash)) return json(res,401,{error:'E-mail ou senha inválidos'});
     if(u.role==='brand' && u.brand_id){
       const brandStatus=db.prepare('SELECT status FROM brands WHERE id=?').get(u.brand_id)?.status;
       if(brandStatus!=='active') return json(res,403,{error:'Acesso da marca temporariamente desativado'});
@@ -701,7 +791,8 @@ async function api(req,res,url){
     db.prepare('INSERT INTO sessions(id,user_id,token_hash,csrf,expires_at,created_at) VALUES(?,?,?,?,?,?)')
       .run(uid(),u.id,sha256(token),csrf,addDaysISO(SESSION_DAYS),nowISO());
     setSessionCookie(res,token,req);
-    return json(res,200,{ok:true,role:u.role,csrf,must_change_password:Number(u.must_change_password||0)===1});
+    const effectiveRole=(u.role==='admin' && (u.access_scope||'full')==='commercial')?'commercial':u.role;
+    return json(res,200,{ok:true,role:effectiveRole,csrf,must_change_password:Number(u.must_change_password||0)===1});
   }
 
   if(pathname==='/api/logout' && req.method==='POST'){
@@ -782,15 +873,125 @@ async function api(req,res,url){
     return json(res,200,{ok:true});
   }
 
+
+  if(pathname==='/api/commercial/overview' && req.method==='GET'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    return json(res,200,crmOverview(s));
+  }
+
+  if(pathname==='/api/commercial/clients' && req.method==='POST'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const tradeName=text(body.trade_name), contactName=text(body.contact_name), phone=text(body.phone), cep=text(body.cep), address=text(body.address);
+    if(!tradeName || !contactName || !phone || !cep || !address) return json(res,400,{error:'Nome fantasia, nome do contato, telefone, CEP e endereço são obrigatórios'});
+    const event=body.serves_event===true||body.serves_event==='1'||body.serves_event==='on';
+    const store=body.serves_store===true||body.serves_store==='1'||body.serves_store==='on';
+    if(!event&&!store) return json(res,400,{error:'Marque se a marca é cliente/prospect de Evento, Loja ou ambos'});
+    let owner=s.role==='commercial'?s.user_id:text(body.owner_user_id)||null;
+    if(s.role==='admin' && owner){
+      const ok=db.prepare(`SELECT id FROM users WHERE id=? AND role='admin' AND COALESCE(access_scope,'full')='commercial' AND COALESCE(active,1)=1`).get(owner);
+      if(!ok) owner=null;
+    }
+    const id=uid(), created=nowISO();
+    db.prepare(`INSERT INTO crm_clients(id,owner_user_id,trade_name,contact_name,phone,email,cep,address,cnpj,legal_name,serves_event,serves_store,status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id,owner,tradeName,contactName,phone,text(body.email),cep,address,text(body.cnpj),text(body.legal_name),event?1:0,store?1:0,text(body.status)||'prospect',text(body.notes),created,created);
+    return json(res,201,{ok:true,id});
+  }
+
+  const crmClientMatch=pathname.match(/^\/api\/commercial\/client\/([^/]+)$/);
+  if(crmClientMatch && req.method==='GET'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const client=crmClientFor(s,crmClientMatch[1]); if(!client)return json(res,404,{error:'Marca/cliente não encontrada'});
+    const activities=crmActivitiesFor(s,client.id)||[];
+    return json(res,200,{client,activities,commercialUsers:s.role==='admin'?commercialUserList():[],csrf:s.csrf});
+  }
+  if(crmClientMatch && req.method==='PATCH'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const id=crmClientMatch[1], body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const c=crmClientFor(s,id); if(!c)return json(res,404,{error:'Marca/cliente não encontrada'});
+    const tradeName=text(body.trade_name??c.trade_name), contactName=text(body.contact_name??c.contact_name), phone=text(body.phone??c.phone), cep=text(body.cep??c.cep), address=text(body.address??c.address);
+    if(!tradeName || !contactName || !phone || !cep || !address) return json(res,400,{error:'Nome fantasia, nome do contato, telefone, CEP e endereço são obrigatórios'});
+    const event=body.serves_event!==undefined?(body.serves_event===true||body.serves_event==='1'||body.serves_event==='on'):Number(c.serves_event)===1;
+    const store=body.serves_store!==undefined?(body.serves_store===true||body.serves_store==='1'||body.serves_store==='on'):Number(c.serves_store)===1;
+    if(!event&&!store) return json(res,400,{error:'Marque Evento, Loja ou ambos'});
+    let owner=c.owner_user_id;
+    if(s.role==='admin' && body.owner_user_id!==undefined){
+      owner=text(body.owner_user_id)||null;
+      if(owner){
+        const ok=db.prepare(`SELECT id FROM users WHERE id=? AND role='admin' AND COALESCE(access_scope,'full')='commercial' AND COALESCE(active,1)=1`).get(owner);
+        if(!ok) owner=null;
+      }
+    }
+    db.prepare(`UPDATE crm_clients SET owner_user_id=?,trade_name=?,contact_name=?,phone=?,email=?,cep=?,address=?,cnpj=?,legal_name=?,serves_event=?,serves_store=?,status=?,notes=?,updated_at=? WHERE id=?`)
+      .run(owner,tradeName,contactName,phone,text(body.email??c.email),cep,address,text(body.cnpj??c.cnpj),text(body.legal_name??c.legal_name),event?1:0,store?1:0,text(body.status??c.status)||'prospect',text(body.notes??c.notes),nowISO(),id);
+    return json(res,200,{ok:true});
+  }
+  if(crmClientMatch && req.method==='DELETE'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const c=crmClientFor(s,crmClientMatch[1]); if(!c)return json(res,404,{error:'Marca/cliente não encontrada'});
+    db.prepare('DELETE FROM crm_clients WHERE id=?').run(c.id);
+    return json(res,200,{ok:true});
+  }
+
+  const crmActivityCreate=pathname.match(/^\/api\/commercial\/client\/([^/]+)\/activity$/);
+  if(crmActivityCreate && req.method==='POST'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const client=crmClientFor(s,crmActivityCreate[1]); if(!client)return json(res,404,{error:'Marca/cliente não encontrada'});
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const activityDate=text(body.activity_date), note=text(body.note);
+    if(!activityDate||note.length<2)return json(res,400,{error:'Informe a data e o que foi conversado'});
+    db.prepare(`INSERT INTO crm_activities(id,client_id,user_id,activity_date,note,next_contact_date,next_action,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`)
+      .run(uid(),client.id,s.user_id,activityDate,note,text(body.next_contact_date)||null,text(body.next_action),nowISO(),nowISO());
+    db.prepare('UPDATE crm_clients SET status=?,updated_at=? WHERE id=?').run(client.status==='prospect'?'contacted':client.status,nowISO(),client.id);
+    return json(res,201,{ok:true});
+  }
+
+  const crmActivityMatch=pathname.match(/^\/api\/commercial\/activity\/([^/]+)$/);
+  if(crmActivityMatch && (req.method==='PATCH'||req.method==='DELETE')){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const a=db.prepare(`SELECT a.*,c.owner_user_id FROM crm_activities a JOIN crm_clients c ON c.id=a.client_id WHERE a.id=?`).get(crmActivityMatch[1]);
+    if(!a || (s.role!=='admin' && a.owner_user_id!==s.user_id))return json(res,404,{error:'Registro não encontrado'});
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    if(req.method==='DELETE'){db.prepare('DELETE FROM crm_activities WHERE id=?').run(a.id);return json(res,200,{ok:true});}
+    db.prepare(`UPDATE crm_activities SET activity_date=?,note=?,next_contact_date=?,next_action=?,updated_at=? WHERE id=?`)
+      .run(text(body.activity_date??a.activity_date),text(body.note??a.note),text(body.next_contact_date??a.next_contact_date)||null,text(body.next_action??a.next_action),nowISO(),a.id);
+    return json(res,200,{ok:true});
+  }
+
+  if(pathname==='/api/admin/commercial-users' && req.method==='GET'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    return json(res,200,{users:commercialUserList(),csrf:s.csrf});
+  }
+  if(pathname==='/api/admin/commercial-users' && req.method==='POST'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    if(!text(body.name)||!validEmail(body.email)||String(body.password||'').length<8)return json(res,400,{error:'Nome, e-mail válido e senha de pelo menos 8 caracteres são obrigatórios'});
+    try{return json(res,201,{ok:true,id:createCommercialUser({name:body.name,email:body.email,password:String(body.password)})});}
+    catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
+  }
+  const commercialUserMatch=pathname.match(/^\/api\/admin\/commercial-user\/([^/]+)$/);
+  if(commercialUserMatch && req.method==='PATCH'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const id=commercialUserMatch[1],body=await readJson(req);if(!verifyCsrf(req,res,s,body))return;
+    const u=db.prepare(`SELECT * FROM users WHERE id=? AND role='admin' AND COALESCE(access_scope,'full')='commercial'`).get(id);if(!u)return json(res,404,{error:'Usuário comercial não encontrado'});
+    try{db.prepare('UPDATE users SET name=?,email=?,active=? WHERE id=?').run(text(body.name??u.name),normalizeEmail(body.email??u.email),body.active===undefined?Number(u.active??1):(body.active?1:0),id);}catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
+    if(body.new_password){if(String(body.new_password).length<8)return json(res,400,{error:'Senha deve ter pelo menos 8 caracteres'});db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash(body.new_password),id);}
+    if(body.active===false) db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
+    return json(res,200,{ok:true});
+  }
+
   if(pathname==='/api/admin/overview' && req.method==='GET'){
     const s=requireAuth(req,res,['admin']); if(!s)return;
     const counts={
       brands:db.prepare('SELECT COUNT(*) AS n FROM brands').get().n,
       openBills:db.prepare(`SELECT COUNT(*) AS n FROM bills WHERE status NOT IN ('paid','cancelled')`).get().n,
       pendingDocs:db.prepare(`SELECT COUNT(*) AS n FROM requirements WHERE status NOT IN ('approved','done')`).get().n,
-      unreadMessages:db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE sender_role='brand' AND read_by_admin=0`).get().n
+      unreadMessages:db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE sender_role='brand' AND read_by_admin=0`).get().n,
+      commercialUsers:db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role='admin' AND COALESCE(access_scope,'full')='commercial' AND COALESCE(active,1)=1`).get().n,
+      crmClients:db.prepare('SELECT COUNT(*) AS n FROM crm_clients').get().n
     };
-    return json(res,200,{counts,brands:adminBrandList(),csrf:s.csrf,structures:Object.keys(STRUCTURES)});
+    return json(res,200,{counts,brands:adminBrandList(),commercialUsers:commercialUserList(),csrf:s.csrf,structures:Object.keys(STRUCTURES)});
   }
 
   if(pathname==='/api/admin/brands' && req.method==='POST'){
@@ -995,7 +1196,7 @@ const server=http.createServer(async (req,res)=>{
 });
 
 server.listen(PORT,()=>{
-  console.log(`\nCarandaí 25 · Portal da Marca v4.8`);
+  console.log(`\nCarandaí 25 · Portal da Marca v5.1 · CRM Comercial`);
   console.log(`Acesse: http://localhost:${PORT}`);
   console.log(`Storage: ${STORAGE_ROOT}`);
   if(process.env.NODE_ENV!=='production'){
