@@ -464,6 +464,12 @@ function setSessionCookie(res, token, req){
   res.setHeader('Set-Cookie',parts.join('; '));
 }
 function clearSessionCookie(res){ res.setHeader('Set-Cookie','c25_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0'); }
+function effectiveRole(dbRole,accessScope){
+  if(dbRole!=='admin') return dbRole;
+  const scope=text(accessScope||'full').toLowerCase();
+  if(['commercial','finance','marketing'].includes(scope)) return scope;
+  return 'admin';
+}
 function getSession(req){
   const token=parseCookies(req).c25_session;
   if(!token) return null;
@@ -471,14 +477,14 @@ function getSession(req){
     FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?`).get(sha256(token));
   if(!row || Number(row.active)===0) return null;
   if(new Date(row.expires_at).getTime()<Date.now()){ db.prepare('DELETE FROM sessions WHERE id=?').run(row.session_id); return null; }
-  row.role=(row.db_role==='admin' && row.access_scope==='commercial')?'commercial':row.db_role;
+  row.role=effectiveRole(row.db_role,row.access_scope);
   return row;
 }
 function requireAuth(req,res,roles,opts={}){
   const s=getSession(req);
   if(!s){ json(res,401,{error:'Não autenticado'}); return null; }
   if(roles && !roles.includes(s.role)){ json(res,403,{error:'Acesso não autorizado'}); return null; }
-  if(s.role==='brand' && Number(s.must_change_password||0)===1 && !opts.allowPasswordChange){
+  if(s.role!=='admin' && Number(s.must_change_password||0)===1 && !opts.allowPasswordChange){
     json(res,428,{error:'Por segurança, altere a senha inicial para continuar.',code:'PASSWORD_CHANGE_REQUIRED'}); return null;
   }
   return s;
@@ -735,6 +741,50 @@ function createCommercialUser({name,email,password}){
   return id;
 }
 
+function staffUserList(){
+  return db.prepare(`SELECT u.id,u.name,u.email,COALESCE(u.access_scope,'full') AS access_scope,COALESCE(u.active,1) AS active,u.must_change_password,u.created_at,
+    (SELECT COUNT(*) FROM crm_clients c WHERE c.owner_user_id=u.id) AS client_count
+    FROM users u WHERE u.role='admin'
+    ORDER BY CASE WHEN COALESCE(u.access_scope,'full') IN ('full','master') THEN 0 ELSE 1 END,u.name COLLATE NOCASE`).all()
+    .map(u=>({...u,profile:['full','master'].includes(u.access_scope)?'master':u.access_scope}));
+}
+function createStaffUser({name,email,password,profile}){
+  const scope=text(profile).toLowerCase();
+  if(!['commercial','finance','marketing'].includes(scope)) throw Object.assign(new Error('Perfil de acesso inválido'),{status:400});
+  const id=uid();
+  db.prepare(`INSERT INTO users(id,brand_id,name,email,password_hash,role,access_scope,active,must_change_password,initial_password_enc,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id,null,text(name),normalizeEmail(email),passwordHash(password),'admin',scope,1,1,encryptInitialPassword(password),nowISO());
+  return id;
+}
+function staffSector(role){ return role==='finance'?'Financeiro':role==='marketing'?'Marketing':''; }
+function staffBrandList(role){
+  const sector=staffSector(role);
+  return db.prepare(`SELECT b.id,b.name,b.legal_name,b.cnpj,b.segment,b.contact_name,b.contact_email,b.phone,b.address,b.status,
+    c.status AS contract_status,
+    (SELECT COUNT(*) FROM bills bl WHERE bl.brand_id=b.id AND bl.status NOT IN ('paid','cancelled')) AS open_bills,
+    (SELECT COUNT(*) FROM messages m WHERE m.brand_id=b.id AND m.sector=? AND m.sender_role='brand' AND m.read_by_admin=0) AS unread_messages
+    FROM brands b LEFT JOIN contracts c ON c.brand_id=b.id
+    ORDER BY b.name COLLATE NOCASE`).all(sector);
+}
+function staffBrandSnapshot(role,brandId){
+  const brand=db.prepare('SELECT * FROM brands WHERE id=?').get(brandId);
+  if(!brand) return null;
+  const sector=staffSector(role);
+  const messages=db.prepare('SELECT * FROM messages WHERE brand_id=? AND sector=? ORDER BY created_at ASC').all(brandId,sector);
+  const base={brand,messages,sector,csrf:null};
+  if(role==='marketing') return base;
+  const contract=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId)||null;
+  if(contract){
+    contract.terms=safeJson(contract.terms_json,defaultContractTerms());
+    contract.file=fileMeta(contract.file_id);
+    contract.generated_file=fileMeta(contract.file_id);
+    contract.signed_file=fileMeta(contract.signed_file_id);
+  }
+  const bills=db.prepare('SELECT * FROM bills WHERE brand_id=? ORDER BY installment,due_date').all(brandId).map(x=>({...x,file:fileMeta(x.file_id)}));
+  const login=db.prepare(`SELECT id,name,email,must_change_password,CASE WHEN initial_password_enc IS NOT NULL AND initial_password_enc<>'' THEN 1 ELSE 0 END AS has_temporary_password FROM users WHERE brand_id=? AND role='brand'`).get(brandId)||null;
+  return {...base,contract,bills,login,email_config:emailStatus()};
+}
+
 function crmWhereFor(s, alias='c'){
   return s.role==='admin' ? {sql:'1=1',params:[]} : {sql:`${alias}.owner_user_id=?`,params:[s.user_id]};
 }
@@ -791,8 +841,8 @@ async function api(req,res,url){
     db.prepare('INSERT INTO sessions(id,user_id,token_hash,csrf,expires_at,created_at) VALUES(?,?,?,?,?,?)')
       .run(uid(),u.id,sha256(token),csrf,addDaysISO(SESSION_DAYS),nowISO());
     setSessionCookie(res,token,req);
-    const effectiveRole=(u.role==='admin' && (u.access_scope||'full')==='commercial')?'commercial':u.role;
-    return json(res,200,{ok:true,role:effectiveRole,csrf,must_change_password:Number(u.must_change_password||0)===1});
+    const loginRole=effectiveRole(u.role,u.access_scope);
+    return json(res,200,{ok:true,role:loginRole,csrf,must_change_password:Number(u.must_change_password||0)===1});
   }
 
   if(pathname==='/api/logout' && req.method==='POST'){
@@ -808,7 +858,7 @@ async function api(req,res,url){
   }
 
   if(pathname==='/api/password/change' && req.method==='POST'){
-    const s=requireAuth(req,res,['brand'],{allowPasswordChange:true}); if(!s)return;
+    const s=requireAuth(req,res,['brand','commercial','finance','marketing'],{allowPasswordChange:true}); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const current=String(body.current_password||'');
     const next=String(body.new_password||'');
@@ -833,7 +883,7 @@ async function api(req,res,url){
     const id=pathname.split('/').pop();
     const f=db.prepare('SELECT * FROM files WHERE id=?').get(id);
     if(!f) return json(res,404,{error:'Arquivo não encontrado'});
-    if(s.role!=='admin' && f.brand_id!==s.brand_id) return json(res,403,{error:'Acesso negado'});
+    if(!['admin','finance'].includes(s.role) && f.brand_id!==s.brand_id) return json(res,403,{error:'Acesso negado'});
     const p=path.join(UPLOADS,f.stored_name);
     if(!fs.existsSync(p)) return json(res,404,{error:'Arquivo indisponível'});
     res.writeHead(200,{'Content-Type':f.mime||'application/octet-stream','Content-Length':fs.statSync(p).size,'Content-Disposition':`inline; filename="${sanitizeName(f.original_name)}"`,'Cache-Control':'private, max-age=60'});
@@ -873,6 +923,38 @@ async function api(req,res,url){
     return json(res,200,{ok:true});
   }
 
+
+  if(pathname==='/api/staff/overview' && req.method==='GET'){
+    const s=requireAuth(req,res,['finance','marketing']); if(!s)return;
+    const brands=staffBrandList(s.role);
+    const counts={
+      brands:brands.length,
+      openBills:s.role==='finance'?brands.reduce((n,b)=>n+Number(b.open_bills||0),0):0,
+      unsigned:s.role==='finance'?brands.filter(b=>b.contract_status!=='signed').length:0,
+      unreadMessages:brands.reduce((n,b)=>n+Number(b.unread_messages||0),0)
+    };
+    return json(res,200,{role:s.role,sector:staffSector(s.role),counts,brands,csrf:s.csrf});
+  }
+
+  const staffBrandMatch=pathname.match(/^\/api\/staff\/brand\/([^/]+)$/);
+  if(staffBrandMatch && req.method==='GET'){
+    const s=requireAuth(req,res,['finance','marketing']); if(!s)return;
+    const snap=staffBrandSnapshot(s.role,staffBrandMatch[1]); if(!snap)return json(res,404,{error:'Marca não encontrada'});
+    db.prepare(`UPDATE messages SET read_by_admin=1 WHERE brand_id=? AND sector=? AND sender_role='brand'`).run(staffBrandMatch[1],staffSector(s.role));
+    return json(res,200,{...snap,csrf:s.csrf});
+  }
+
+  const staffMessageMatch=pathname.match(/^\/api\/staff\/brand\/([^/]+)\/message$/);
+  if(staffMessageMatch && req.method==='POST'){
+    const s=requireAuth(req,res,['finance','marketing']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const brand=db.prepare('SELECT id FROM brands WHERE id=?').get(staffMessageMatch[1]); if(!brand)return json(res,404,{error:'Marca não encontrada'});
+    const message=text(body.body); if(message.length<2)return json(res,400,{error:'Escreva a mensagem'});
+    const sector=staffSector(s.role);
+    db.prepare(`INSERT INTO messages(id,brand_id,sector,sender_role,sender_name,body,created_at,read_by_brand,read_by_admin) VALUES(?,?,?,?,?,?,?,?,?)`)
+      .run(uid(),staffMessageMatch[1],sector,'admin',s.name,message,nowISO(),0,1);
+    return json(res,201,{ok:true});
+  }
 
   if(pathname==='/api/commercial/overview' && req.method==='GET'){
     const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
@@ -959,6 +1041,37 @@ async function api(req,res,url){
     return json(res,200,{ok:true});
   }
 
+  if(pathname==='/api/admin/staff-users' && req.method==='GET'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    return json(res,200,{users:staffUserList(),csrf:s.csrf});
+  }
+  if(pathname==='/api/admin/staff-users' && req.method==='POST'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    if(!text(body.name)||!validEmail(body.email)||String(body.password||'').length<8)return json(res,400,{error:'Nome, e-mail válido e senha de pelo menos 8 caracteres são obrigatórios'});
+    try{return json(res,201,{ok:true,id:createStaffUser({name:body.name,email:body.email,password:String(body.password),profile:body.profile})});}
+    catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
+  }
+  const staffUserMatch=pathname.match(/^\/api\/admin\/staff-user\/([^/]+)$/);
+  if(staffUserMatch && req.method==='PATCH'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const id=staffUserMatch[1],body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const u=db.prepare(`SELECT * FROM users WHERE id=? AND role='admin'`).get(id); if(!u)return json(res,404,{error:'Usuário não encontrado'});
+    const currentScope=text(u.access_scope||'full').toLowerCase();
+    if(['full','master'].includes(currentScope)) return json(res,403,{error:'O usuário Master é protegido e não pode ter o perfil ou status alterado por esta tela.'});
+    const profile=text(body.profile??currentScope).toLowerCase();
+    if(!['commercial','finance','marketing'].includes(profile))return json(res,400,{error:'Escolha Comercial, Financeiro ou Marketing'});
+    const active=body.active===undefined?Number(u.active??1):(body.active?1:0);
+    try{db.prepare('UPDATE users SET name=?,email=?,access_scope=?,active=? WHERE id=?').run(text(body.name??u.name),normalizeEmail(body.email??u.email),profile,active,id);}
+    catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
+    if(body.new_password){
+      if(String(body.new_password).length<8)return json(res,400,{error:'Senha deve ter pelo menos 8 caracteres'});
+      db.prepare('UPDATE users SET password_hash=?,must_change_password=1,initial_password_enc=? WHERE id=?').run(passwordHash(body.new_password),encryptInitialPassword(body.new_password),id);
+    }
+    if(!active) db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
+    return json(res,200,{ok:true});
+  }
+
   if(pathname==='/api/admin/commercial-users' && req.method==='GET'){
     const s=requireAuth(req,res,['admin']); if(!s)return;
     return json(res,200,{users:commercialUserList(),csrf:s.csrf});
@@ -989,9 +1102,10 @@ async function api(req,res,url){
       pendingDocs:db.prepare(`SELECT COUNT(*) AS n FROM requirements WHERE status NOT IN ('approved','done')`).get().n,
       unreadMessages:db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE sender_role='brand' AND read_by_admin=0`).get().n,
       commercialUsers:db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role='admin' AND COALESCE(access_scope,'full')='commercial' AND COALESCE(active,1)=1`).get().n,
-      crmClients:db.prepare('SELECT COUNT(*) AS n FROM crm_clients').get().n
+      crmClients:db.prepare('SELECT COUNT(*) AS n FROM crm_clients').get().n,
+      staffUsers:db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role='admin' AND COALESCE(access_scope,'full') NOT IN ('full','master') AND COALESCE(active,1)=1`).get().n
     };
-    return json(res,200,{counts,brands:adminBrandList(),commercialUsers:commercialUserList(),csrf:s.csrf,structures:Object.keys(STRUCTURES)});
+    return json(res,200,{counts,brands:adminBrandList(),commercialUsers:commercialUserList(),staffUsers:staffUserList(),csrf:s.csrf,structures:Object.keys(STRUCTURES)});
   }
 
   if(pathname==='/api/admin/brands' && req.method==='POST'){
@@ -1057,7 +1171,7 @@ async function api(req,res,url){
 
   const contractMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract$/);
   if(contractMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const brandId=contractMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     let fileId=c.file_id;
@@ -1069,7 +1183,7 @@ async function api(req,res,url){
 
   const contractGenerateMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/generate$/);
   if(contractGenerateMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const brandId=contractGenerateMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     const previous=safeJson(c.terms_json,defaultContractTerms());
@@ -1080,7 +1194,7 @@ async function api(req,res,url){
 
   const contractSignedMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/signed$/);
   if(contractSignedMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const brandId=contractSignedMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     if(!body.file) return json(res,400,{error:'Selecione o PDF assinado.'});
@@ -1094,14 +1208,14 @@ async function api(req,res,url){
 
   const contractEmailMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/email$/);
   if(contractEmailMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const brandId=contractEmailMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const result=await sendContractEmail({brandId,to:body.to});
     return json(res,200,{ok:true,...result});
   }
 
   if(pathname==='/api/admin/email/test' && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const result=await sendEmailTest(body.to);
     return json(res,200,{ok:true,...result});
@@ -1109,7 +1223,7 @@ async function api(req,res,url){
 
   const billCreate=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/bills$/);
   if(billCreate && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const brandId=billCreate[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     let fileId=null; if(body.file) fileId=saveBase64File({brandId,kind:'bill',label:text(body.label)||'Boleto',file:body.file});
     db.prepare(`INSERT INTO bills(id,brand_id,installment,label,amount_cents,due_date,status,file_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`)
@@ -1119,7 +1233,7 @@ async function api(req,res,url){
 
   const billUpdate=pathname.match(/^\/api\/admin\/bill\/([^/]+)$/);
   if(billUpdate && req.method==='PATCH'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const id=billUpdate[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const b=db.prepare('SELECT * FROM bills WHERE id=?').get(id); if(!b)return json(res,404,{error:'Boleto não encontrado'});
     let fileId=b.file_id; if(body.file) fileId=saveBase64File({brandId:b.brand_id,kind:'bill',label:text(body.label)||b.label,file:body.file});
@@ -1129,7 +1243,7 @@ async function api(req,res,url){
     return json(res,200,{ok:true});
   }
   if(billUpdate && req.method==='DELETE'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const b=db.prepare('SELECT * FROM bills WHERE id=?').get(billUpdate[1]); if(!b)return json(res,404,{error:'Boleto não encontrado'});
     db.prepare('DELETE FROM bills WHERE id=?').run(billUpdate[1]); removeFileIfUnreferenced(b.file_id); return json(res,200,{ok:true});
