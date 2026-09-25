@@ -868,7 +868,7 @@ async function api(req,res,url){
   }
 
   if(pathname==='/api/password/change' && req.method==='POST'){
-    const s=requireAuth(req,res,['brand','commercial','finance','marketing'],{allowPasswordChange:true}); if(!s)return;
+    const s=requireAuth(req,res,['brand','commercial','commercial_operational','finance','marketing'],{allowPasswordChange:true}); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const current=String(body.current_password||'');
     const next=String(body.new_password||'');
@@ -893,7 +893,7 @@ async function api(req,res,url){
     const id=pathname.split('/').pop();
     const f=db.prepare('SELECT * FROM files WHERE id=?').get(id);
     if(!f) return json(res,404,{error:'Arquivo não encontrado'});
-    if(!['admin','finance'].includes(s.role) && f.brand_id!==s.brand_id) return json(res,403,{error:'Acesso negado'});
+    if(!['admin','finance','commercial_operational'].includes(s.role) && f.brand_id!==s.brand_id) return json(res,403,{error:'Acesso negado'});
     const p=path.join(UPLOADS,f.stored_name);
     if(!fs.existsSync(p)) return json(res,404,{error:'Arquivo indisponível'});
     res.writeHead(200,{'Content-Type':f.mime||'application/octet-stream','Content-Length':fs.statSync(p).size,'Content-Disposition':`inline; filename="${sanitizeName(f.original_name)}"`,'Cache-Control':'private, max-age=60'});
