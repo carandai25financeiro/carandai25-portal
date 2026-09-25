@@ -1,4 +1,4 @@
-const CACHE='carandai25-shell-v4-8-contract-installments-payment';
+const CACHE='carandai25-shell-v5-1-crm-access';
 const SHELL=[
   '/',
   '/index.html',
