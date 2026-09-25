@@ -40,6 +40,7 @@ a{color:inherit}
 .login-form input,.field input,.field select,.field textarea{width:100%;border:1px solid var(--ink);background:transparent;padding:15px 14px;outline:none;border-radius:0;font-size:15px;letter-spacing:0;text-transform:none;font-weight:400}
 .login-form input:focus,.field input:focus,.field select:focus,.field textarea:focus{box-shadow:inset 0 0 0 2px var(--blue);border-color:var(--blue)}
 .form-message{min-height:18px;font-size:12px;color:var(--red)}
+.login-access-note{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin-top:2px}
 .demo-help{margin-top:12px;max-width:560px;border-top:1px solid var(--line);padding-top:12px;color:var(--muted);font-size:12px}
 .demo-help summary{cursor:pointer;font-weight:700;color:var(--ink)}
 .demo-help p{line-height:1.65}
@@ -307,4 +308,88 @@ input[type=file]{max-width:100%}
   .signed-contract-title{
     font-size:21px;
   }
+}
+
+
+/* CRM COMERCIAL + USUARIOS E ACESSOS */
+.crm-hero{background:#111}
+.crm-home-actions{margin:18px 0 8px}
+.crm-filterbar{display:grid;grid-template-columns:minmax(240px,1fr) 190px auto;gap:10px;align-items:center;margin:0 0 18px}
+.crm-table{border-top:1px solid var(--ink)}
+.crm-line{display:grid;grid-template-columns:minmax(170px,1.3fr) minmax(150px,1fr) minmax(110px,.7fr) 120px 110px 110px 30px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--ink);font-size:12px}
+.crm-line.head{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.crm-line .name,.staff-user-line .name,.staff-brand-line .name{font-family:Georgia,serif;font-style:italic;font-size:19px}
+.crm-line span,.staff-brand-line span{display:block;color:var(--muted);font-size:10px;margin-top:3px}
+.crm-tag,.access-badge{display:inline-flex;align-items:center;border:1px solid var(--ink);padding:5px 7px;font-size:9px;font-weight:900;letter-spacing:.07em;text-transform:uppercase;margin:2px 3px 2px 0}
+.crm-tag.event{background:var(--blue);color:white;border-color:var(--blue)}
+.crm-tag.store{background:var(--yellow)}
+.crm-client-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding:0 0 18px;border-bottom:1px solid var(--ink)}
+.crm-client-head h2{font-family:Georgia,serif;font-style:italic;font-weight:400;font-size:38px;margin:5px 0}
+.crm-client-head p{margin:0;color:var(--muted)}
+.crm-checks{display:flex;gap:10px;flex-wrap:wrap}
+.crm-checks label{display:flex!important;grid-template-columns:none!important;align-items:center;gap:7px;border:1px solid var(--ink);padding:10px 12px;font-size:11px!important;letter-spacing:.04em!important}
+.crm-checks input{width:auto!important;margin:0}
+.field-label{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.timeline{display:grid;gap:0}
+.timeline-item{display:grid;grid-template-columns:18px minmax(0,1fr);gap:12px;padding:15px 0;border-bottom:1px solid var(--line)}
+.timeline-dot{width:10px;height:10px;border-radius:50%;background:var(--blue);margin-top:5px}
+.timeline-item span{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.timeline-item strong{display:block;font-size:13px;line-height:1.45}
+.timeline-item p{font-size:11px;color:var(--muted);margin:7px 0 0}
+.timeline-actions{display:flex;gap:12px;margin-top:8px}
+.danger-link{color:var(--red)}
+.timeline.compact .timeline-item{padding:10px 0}
+.agenda-list{display:grid;border-top:1px solid var(--ink)}
+.agenda-item{border:0;border-bottom:1px solid var(--ink);background:transparent;display:grid;grid-template-columns:100px minmax(0,1fr) 24px;gap:14px;align-items:center;text-align:left;padding:14px 0}
+.agenda-item.static{grid-template-columns:100px minmax(0,1fr)}
+.agenda-item:hover:not(.static){background:rgba(255,255,255,.35)}
+.agenda-date{font-family:Georgia,serif;font-style:italic;font-size:19px}
+.agenda-item strong{font-size:13px}.agenda-item p{margin:4px 0 0;color:var(--muted);font-size:11px}
+.calendar{border:1px solid var(--ink);background:rgba(255,255,255,.35);margin-bottom:26px}
+.calendar-head,.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.calendar-head>div{padding:9px;border-right:1px solid var(--line);font-size:9px;text-transform:uppercase;letter-spacing:.07em;text-align:center}
+.calendar-day{min-height:118px;border:0;border-right:1px solid var(--line);border-top:1px solid var(--line);background:transparent;text-align:left;padding:8px;overflow:hidden}
+.calendar-day:hover{background:white}.calendar-day.today{box-shadow:inset 0 0 0 2px var(--blue)}
+.calendar-day.empty-day{pointer-events:none;background:rgba(17,17,17,.03)}
+.day-num{display:block;font-family:Georgia,serif;font-style:italic;font-size:18px;margin-bottom:6px}
+.cal-chip{display:block;background:var(--ink);color:white;font-size:9px;padding:4px 5px;margin:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-chip.follow{background:var(--orange)}
+.report-filter{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.report-metrics{margin-top:0}
+.access-explainer{margin-bottom:18px}
+.access-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);margin-top:14px}
+.access-grid>div{padding:14px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.access-grid strong{font-size:12px;text-transform:uppercase;letter-spacing:.06em}.access-grid p{font-size:11px;margin:6px 0 0}
+.staff-user-line{display:grid;grid-template-columns:minmax(160px,1.2fr) minmax(190px,1.2fr) 130px 100px 90px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--ink);font-size:12px}
+.staff-user-line.head,.staff-brand-line.head{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.access-badge.master{background:var(--ink);color:white}.access-badge.commercial{background:var(--blue);color:white;border-color:var(--blue)}.access-badge.finance{background:var(--yellow)}.access-badge.marketing{background:var(--pink)}
+.staff-brand-line{display:grid;grid-template-columns:minmax(180px,1.3fr) minmax(160px,1fr) 130px 90px 30px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--ink);font-size:12px}
+.thread.standalone{border:1px solid var(--ink);background:#f7f5f0}
+.quick-card{min-height:150px;border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);border-top:0;border-left:0;background:transparent;text-align:left;padding:18px;display:flex;flex-direction:column;justify-content:space-between}
+.quick-card span{font-size:9px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}.quick-card strong{font-family:Georgia,serif;font-style:italic;font-weight:400;font-size:25px;margin:18px 0 5px}.quick-card small{font-size:10px;color:var(--muted);line-height:1.35}
+
+@media(max-width:1100px){
+  .crm-line{grid-template-columns:minmax(170px,1.4fr) minmax(130px,1fr) 105px 90px 30px}
+  .crm-line>div:nth-child(5),.crm-line>div:nth-child(6){display:none}
+  .access-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:850px){
+  .crm-filterbar{grid-template-columns:1fr}
+  .crm-line{grid-template-columns:minmax(0,1.4fr) minmax(120px,1fr) 90px 26px}
+  .crm-line>div:nth-child(3),.crm-line>div:nth-child(5),.crm-line>div:nth-child(6){display:none}
+  .staff-user-line{grid-template-columns:minmax(0,1.2fr) minmax(150px,1fr) 100px 70px}
+  .staff-user-line>div:nth-child(4){display:none}
+  .staff-brand-line{grid-template-columns:minmax(0,1.2fr) minmax(130px,1fr) 90px 26px}
+  .staff-brand-line>div:nth-child(3){display:none}
+}
+@media(max-width:560px){
+  .crm-line{grid-template-columns:minmax(0,1fr) 82px 24px}
+  .crm-line>div:nth-child(2),.crm-line>div:nth-child(3),.crm-line>div:nth-child(5),.crm-line>div:nth-child(6){display:none}
+  .crm-client-head{align-items:flex-start;flex-direction:column}
+  .calendar{overflow:auto}.calendar-head,.calendar-grid{min-width:700px}.calendar-day{min-height:100px}
+  .access-grid{grid-template-columns:1fr}
+  .staff-user-line{grid-template-columns:minmax(0,1fr) 86px 62px}
+  .staff-user-line>div:nth-child(2),.staff-user-line>div:nth-child(4){display:none}
+  .staff-brand-line{grid-template-columns:minmax(0,1fr) 70px 24px}
+  .staff-brand-line>div:nth-child(2),.staff-brand-line>div:nth-child(3){display:none}
 }

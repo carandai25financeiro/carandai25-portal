@@ -1,0 +1,45 @@
+name: Validate CRM v5.1
+
+on:
+  push:
+    branches:
+      - feature/crm-comercial-v5-1
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Syntax check
+        run: |
+          node --check server.js
+          node --check public/app.js
+          node --check contract-pdf.js
+      - name: Start portal
+        env:
+          ADMIN_PASSWORD: TesteMaster123!
+          SEED_DEMO: '0'
+          NODE_ENV: test
+          PORT: '3100'
+          STORAGE_ROOT: /tmp/carandai25-test
+        run: |
+          node server.js > /tmp/carandai25.log 2>&1 &
+          echo $! > /tmp/carandai25.pid
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:3100/api/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/carandai25.log
+          exit 1

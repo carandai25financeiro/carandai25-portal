@@ -268,9 +268,48 @@ function initSchema(){
       created_at TEXT NOT NULL,
       FOREIGN KEY(brand_id) REFERENCES brands(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS crm_clients (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT,
+      trade_name TEXT NOT NULL,
+      contact_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT DEFAULT '',
+      cep TEXT NOT NULL DEFAULT '',
+      address TEXT NOT NULL DEFAULT '',
+      cnpj TEXT DEFAULT '',
+      legal_name TEXT DEFAULT '',
+      serves_event INTEGER NOT NULL DEFAULT 0,
+      serves_store INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'prospect',
+      notes TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS crm_activities (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      activity_date TEXT NOT NULL,
+      note TEXT NOT NULL,
+      next_contact_date TEXT,
+      next_action TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(client_id) REFERENCES crm_clients(id) ON DELETE CASCADE,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
     CREATE INDEX IF NOT EXISTS idx_bills_brand ON bills(brand_id);
     CREATE INDEX IF NOT EXISTS idx_req_brand ON requirements(brand_id);
     CREATE INDEX IF NOT EXISTS idx_msg_brand ON messages(brand_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_owner ON crm_clients(owner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_type_event ON crm_clients(serves_event);
+    CREATE INDEX IF NOT EXISTS idx_crm_type_store ON crm_clients(serves_store);
+    CREATE INDEX IF NOT EXISTS idx_crm_activity_client ON crm_activities(client_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_activity_date ON crm_activities(activity_date);
+    CREATE INDEX IF NOT EXISTS idx_crm_next_contact ON crm_activities(next_contact_date);
   `);
 
   // Migração segura para bancos já existentes no Railway.
@@ -281,6 +320,8 @@ function initSchema(){
   const userCols = new Set(db.prepare('PRAGMA table_info(users)').all().map(x=>x.name));
   if(!userCols.has('must_change_password')) db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
   if(!userCols.has('initial_password_enc')) db.exec('ALTER TABLE users ADD COLUMN initial_password_enc TEXT');
+  if(!userCols.has('access_scope')) db.exec("ALTER TABLE users ADD COLUMN access_scope TEXT DEFAULT 'full'");
+  if(!userCols.has('active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
 
   const contractCols = new Set(db.prepare('PRAGMA table_info(contracts)').all().map(x=>x.name));
   const contractMigrations=[
@@ -423,20 +464,27 @@ function setSessionCookie(res, token, req){
   res.setHeader('Set-Cookie',parts.join('; '));
 }
 function clearSessionCookie(res){ res.setHeader('Set-Cookie','c25_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0'); }
+function effectiveRole(dbRole,accessScope){
+  if(dbRole!=='admin') return dbRole;
+  const scope=text(accessScope||'full').toLowerCase();
+  if(['commercial','commercial_operational','finance','marketing'].includes(scope)) return scope;
+  return 'admin';
+}
 function getSession(req){
   const token=parseCookies(req).c25_session;
   if(!token) return null;
-  const row=db.prepare(`SELECT s.id AS session_id,s.csrf,s.expires_at,u.id AS user_id,u.brand_id,u.name,u.email,u.role,u.must_change_password
+  const row=db.prepare(`SELECT s.id AS session_id,s.csrf,s.expires_at,u.id AS user_id,u.brand_id,u.name,u.email,u.role AS db_role,u.must_change_password,COALESCE(u.access_scope,'full') AS access_scope,COALESCE(u.active,1) AS active
     FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?`).get(sha256(token));
-  if(!row) return null;
+  if(!row || Number(row.active)===0) return null;
   if(new Date(row.expires_at).getTime()<Date.now()){ db.prepare('DELETE FROM sessions WHERE id=?').run(row.session_id); return null; }
+  row.role=effectiveRole(row.db_role,row.access_scope);
   return row;
 }
 function requireAuth(req,res,roles,opts={}){
   const s=getSession(req);
   if(!s){ json(res,401,{error:'Não autenticado'}); return null; }
   if(roles && !roles.includes(s.role)){ json(res,403,{error:'Acesso não autorizado'}); return null; }
-  if(s.role==='brand' && Number(s.must_change_password||0)===1 && !opts.allowPasswordChange){
+  if(s.role!=='admin' && Number(s.must_change_password||0)===1 && !opts.allowPasswordChange){
     json(res,428,{error:'Por segurança, altere a senha inicial para continuar.',code:'PASSWORD_CHANGE_REQUIRED'}); return null;
   }
   return s;
@@ -576,7 +624,7 @@ async function sendContractEmail({brandId,to}){
   const credentialPassword = Number(brand.must_change_password||0)===1 && initialPassword
     ? `<strong>${htmlEsc(initialPassword)}</strong>`
     : '<em>use a senha pessoal já definida pela marca; para reenviar uma senha temporária, a equipe Carandaí 25 deverá redefini-la no cadastro</em>';
-  const subject=`Contrato + acesso ao Portal da Marca - Carandaí 25 - ${brand.name}`;
+  const subject='Novo Portal - Carandai 25';
   const html=`
     <div style="font-family:Arial,Helvetica,sans-serif;color:#1d1714;line-height:1.55;max-width:680px">
       <p>Olá, ${htmlEsc(responsible)}.</p>
@@ -678,11 +726,113 @@ function adminBrandList(){
   return rows.map(r=>({...r,structure:safeJson(r.structure_json,{})}));
 }
 
+
+function commercialUserList(){
+  return db.prepare(`SELECT u.id,u.name,u.email,COALESCE(u.active,1) AS active,u.created_at,
+    (SELECT COUNT(*) FROM crm_clients c WHERE c.owner_user_id=u.id) AS client_count,
+    (SELECT MAX(a.activity_date) FROM crm_activities a JOIN crm_clients c ON c.id=a.client_id WHERE c.owner_user_id=u.id) AS last_activity
+    FROM users u WHERE u.role='admin' AND COALESCE(u.access_scope,'full')='commercial' ORDER BY u.name`).all();
+}
+
+function createCommercialUser({name,email,password}){
+  const id=uid();
+  db.prepare(`INSERT INTO users(id,brand_id,name,email,password_hash,role,access_scope,active,must_change_password,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`)
+    .run(id,null,text(name),normalizeEmail(email),passwordHash(password),'admin','commercial',1,0,nowISO());
+  return id;
+}
+
+function staffProfileFromScope(scope){
+  const s=text(scope||'full').toLowerCase();
+  if(['full','master'].includes(s)) return 'master';
+  if(s==='commercial') return 'commercial_crm';
+  return s;
+}
+function staffScopeFromProfile(profile){
+  const p=text(profile).toLowerCase();
+  return p==='commercial_crm'?'commercial':p;
+}
+function staffUserList(){
+  return db.prepare(`SELECT u.id,u.name,u.email,COALESCE(u.access_scope,'full') AS access_scope,COALESCE(u.active,1) AS active,u.must_change_password,u.created_at,
+    (SELECT COUNT(*) FROM crm_clients c WHERE c.owner_user_id=u.id) AS client_count
+    FROM users u WHERE u.role='admin'
+    ORDER BY CASE WHEN COALESCE(u.access_scope,'full') IN ('full','master') THEN 0 ELSE 1 END,u.name COLLATE NOCASE`).all()
+    .map(u=>({...u,profile:staffProfileFromScope(u.access_scope)}));
+}
+function createStaffUser({name,email,password,profile}){
+  const scope=staffScopeFromProfile(profile);
+  if(!['commercial','commercial_operational','finance','marketing'].includes(scope)) throw Object.assign(new Error('Perfil de acesso inválido'),{status:400});
+  const id=uid();
+  db.prepare(`INSERT INTO users(id,brand_id,name,email,password_hash,role,access_scope,active,must_change_password,initial_password_enc,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id,null,text(name),normalizeEmail(email),passwordHash(password),'admin',scope,1,1,encryptInitialPassword(password),nowISO());
+  return id;
+}
+function staffSector(role){ return role==='finance'?'Financeiro':role==='marketing'?'Marketing':''; }
+function staffBrandList(role){
+  const sector=staffSector(role);
+  return db.prepare(`SELECT b.id,b.name,b.legal_name,b.cnpj,b.segment,b.contact_name,b.contact_email,b.phone,b.address,b.status,
+    c.status AS contract_status,
+    (SELECT COUNT(*) FROM bills bl WHERE bl.brand_id=b.id AND bl.status NOT IN ('paid','cancelled')) AS open_bills,
+    (SELECT COUNT(*) FROM messages m WHERE m.brand_id=b.id AND m.sector=? AND m.sender_role='brand' AND m.read_by_admin=0) AS unread_messages
+    FROM brands b LEFT JOIN contracts c ON c.brand_id=b.id
+    ORDER BY b.name COLLATE NOCASE`).all(sector);
+}
+function staffBrandSnapshot(role,brandId){
+  const brand=db.prepare('SELECT * FROM brands WHERE id=?').get(brandId);
+  if(!brand) return null;
+  const sector=staffSector(role);
+  const messages=db.prepare('SELECT * FROM messages WHERE brand_id=? AND sector=? ORDER BY created_at ASC').all(brandId,sector);
+  const base={brand,messages,sector,csrf:null};
+  if(role==='marketing') return base;
+  const contract=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId)||null;
+  if(contract){
+    contract.terms=safeJson(contract.terms_json,defaultContractTerms());
+    contract.file=fileMeta(contract.file_id);
+    contract.generated_file=fileMeta(contract.file_id);
+    contract.signed_file=fileMeta(contract.signed_file_id);
+  }
+  const bills=db.prepare('SELECT * FROM bills WHERE brand_id=? ORDER BY installment,due_date').all(brandId).map(x=>({...x,file:fileMeta(x.file_id)}));
+  const login=db.prepare(`SELECT id,name,email,must_change_password,CASE WHEN initial_password_enc IS NOT NULL AND initial_password_enc<>'' THEN 1 ELSE 0 END AS has_temporary_password FROM users WHERE brand_id=? AND role='brand'`).get(brandId)||null;
+  return {...base,contract,bills,login,email_config:emailStatus()};
+}
+
+function crmWhereFor(s, alias='c'){
+  return s.role==='admin' ? {sql:'1=1',params:[]} : {sql:`${alias}.owner_user_id=?`,params:[s.user_id]};
+}
+
+function crmClientFor(s,id){
+  const w=crmWhereFor(s,'c');
+  return db.prepare(`SELECT c.*,u.name AS owner_name,u.email AS owner_email FROM crm_clients c LEFT JOIN users u ON u.id=c.owner_user_id WHERE c.id=? AND ${w.sql}`).get(id,...w.params)||null;
+}
+
+function crmActivitiesFor(s,clientId){
+  const client=crmClientFor(s,clientId); if(!client) return null;
+  return db.prepare(`SELECT a.*,u.name AS user_name FROM crm_activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.client_id=? ORDER BY a.activity_date DESC,a.created_at DESC`).all(clientId);
+}
+
+function crmOverview(s){
+  const w=crmWhereFor(s,'c');
+  const clients=db.prepare(`SELECT c.*,u.name AS owner_name,
+    (SELECT MAX(a.activity_date) FROM crm_activities a WHERE a.client_id=c.id) AS last_contact,
+    (SELECT MIN(a.next_contact_date) FROM crm_activities a WHERE a.client_id=c.id AND a.next_contact_date IS NOT NULL AND a.next_contact_date>=date('now')) AS next_contact
+    FROM crm_clients c LEFT JOIN users u ON u.id=c.owner_user_id WHERE ${w.sql} ORDER BY c.trade_name COLLATE NOCASE`).all(...w.params);
+  const activities=db.prepare(`SELECT a.*,c.trade_name,c.contact_name,c.owner_user_id,u.name AS user_name
+    FROM crm_activities a JOIN crm_clients c ON c.id=a.client_id LEFT JOIN users u ON u.id=a.user_id
+    WHERE ${w.sql} ORDER BY a.activity_date DESC,a.created_at DESC LIMIT 2500`).all(...w.params);
+  const counts={
+    total:clients.length,
+    event:clients.filter(c=>Number(c.serves_event)===1).length,
+    store:clients.filter(c=>Number(c.serves_store)===1).length,
+    both:clients.filter(c=>Number(c.serves_event)===1&&Number(c.serves_store)===1).length,
+    prospect:clients.filter(c=>c.status==='prospect').length
+  };
+  return {counts,clients,activities,commercialUsers:s.role==='admin'?commercialUserList():[],csrf:s.csrf};
+}
+
 async function api(req,res,url){
   const pathname=url.pathname;
 
   if(pathname==='/api/health' && req.method==='GET'){
-    return json(res,200,{ok:true,service:'carandai25-portal',version:'4.8.0',storage:STORAGE_ROOT});
+    return json(res,200,{ok:true,service:'carandai25-portal',version:'5.1.0',storage:STORAGE_ROOT});
   }
 
   if(pathname==='/api/login' && req.method==='POST'){
@@ -691,7 +841,7 @@ async function api(req,res,url){
     const body=await readJson(req);
     const email=normalizeEmail(body.email); const password=String(body.password||'');
     const u=db.prepare('SELECT * FROM users WHERE email=?').get(email);
-    if(!u || !passwordVerify(password,u.password_hash)) return json(res,401,{error:'E-mail ou senha inválidos'});
+    if(!u || Number(u.active??1)===0 || !passwordVerify(password,u.password_hash)) return json(res,401,{error:'E-mail ou senha inválidos'});
     if(u.role==='brand' && u.brand_id){
       const brandStatus=db.prepare('SELECT status FROM brands WHERE id=?').get(u.brand_id)?.status;
       if(brandStatus!=='active') return json(res,403,{error:'Acesso da marca temporariamente desativado'});
@@ -701,7 +851,8 @@ async function api(req,res,url){
     db.prepare('INSERT INTO sessions(id,user_id,token_hash,csrf,expires_at,created_at) VALUES(?,?,?,?,?,?)')
       .run(uid(),u.id,sha256(token),csrf,addDaysISO(SESSION_DAYS),nowISO());
     setSessionCookie(res,token,req);
-    return json(res,200,{ok:true,role:u.role,csrf,must_change_password:Number(u.must_change_password||0)===1});
+    const loginRole=effectiveRole(u.role,u.access_scope);
+    return json(res,200,{ok:true,role:loginRole,csrf,must_change_password:Number(u.must_change_password||0)===1});
   }
 
   if(pathname==='/api/logout' && req.method==='POST'){
@@ -717,7 +868,7 @@ async function api(req,res,url){
   }
 
   if(pathname==='/api/password/change' && req.method==='POST'){
-    const s=requireAuth(req,res,['brand'],{allowPasswordChange:true}); if(!s)return;
+    const s=requireAuth(req,res,['brand','commercial','commercial_operational','finance','marketing'],{allowPasswordChange:true}); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const current=String(body.current_password||'');
     const next=String(body.new_password||'');
@@ -742,7 +893,7 @@ async function api(req,res,url){
     const id=pathname.split('/').pop();
     const f=db.prepare('SELECT * FROM files WHERE id=?').get(id);
     if(!f) return json(res,404,{error:'Arquivo não encontrado'});
-    if(s.role!=='admin' && f.brand_id!==s.brand_id) return json(res,403,{error:'Acesso negado'});
+    if(!['admin','finance','commercial_operational'].includes(s.role) && f.brand_id!==s.brand_id) return json(res,403,{error:'Acesso negado'});
     const p=path.join(UPLOADS,f.stored_name);
     if(!fs.existsSync(p)) return json(res,404,{error:'Arquivo indisponível'});
     res.writeHead(200,{'Content-Type':f.mime||'application/octet-stream','Content-Length':fs.statSync(p).size,'Content-Disposition':`inline; filename="${sanitizeName(f.original_name)}"`,'Cache-Control':'private, max-age=60'});
@@ -782,19 +933,194 @@ async function api(req,res,url){
     return json(res,200,{ok:true});
   }
 
-  if(pathname==='/api/admin/overview' && req.method==='GET'){
+
+  if(pathname==='/api/staff/overview' && req.method==='GET'){
+    const s=requireAuth(req,res,['finance','marketing']); if(!s)return;
+    const brands=staffBrandList(s.role);
+    const counts={
+      brands:brands.length,
+      openBills:s.role==='finance'?brands.reduce((n,b)=>n+Number(b.open_bills||0),0):0,
+      unsigned:s.role==='finance'?brands.filter(b=>b.contract_status!=='signed').length:0,
+      unreadMessages:brands.reduce((n,b)=>n+Number(b.unread_messages||0),0)
+    };
+    return json(res,200,{role:s.role,sector:staffSector(s.role),counts,brands,csrf:s.csrf});
+  }
+
+  const staffBrandMatch=pathname.match(/^\/api\/staff\/brand\/([^/]+)$/);
+  if(staffBrandMatch && req.method==='GET'){
+    const s=requireAuth(req,res,['finance','marketing']); if(!s)return;
+    const snap=staffBrandSnapshot(s.role,staffBrandMatch[1]); if(!snap)return json(res,404,{error:'Marca não encontrada'});
+    db.prepare(`UPDATE messages SET read_by_admin=1 WHERE brand_id=? AND sector=? AND sender_role='brand'`).run(staffBrandMatch[1],staffSector(s.role));
+    return json(res,200,{...snap,csrf:s.csrf});
+  }
+
+  const staffMessageMatch=pathname.match(/^\/api\/staff\/brand\/([^/]+)\/message$/);
+  if(staffMessageMatch && req.method==='POST'){
+    const s=requireAuth(req,res,['finance','marketing']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const brand=db.prepare('SELECT id FROM brands WHERE id=?').get(staffMessageMatch[1]); if(!brand)return json(res,404,{error:'Marca não encontrada'});
+    const message=text(body.body); if(message.length<2)return json(res,400,{error:'Escreva a mensagem'});
+    const sector=staffSector(s.role);
+    db.prepare(`INSERT INTO messages(id,brand_id,sector,sender_role,sender_name,body,created_at,read_by_brand,read_by_admin) VALUES(?,?,?,?,?,?,?,?,?)`)
+      .run(uid(),staffMessageMatch[1],sector,'admin',s.name,message,nowISO(),0,1);
+    return json(res,201,{ok:true});
+  }
+
+  if(pathname==='/api/commercial/overview' && req.method==='GET'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    return json(res,200,crmOverview(s));
+  }
+
+  if(pathname==='/api/commercial/clients' && req.method==='POST'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const tradeName=text(body.trade_name), contactName=text(body.contact_name), phone=text(body.phone), cep=text(body.cep), address=text(body.address);
+    if(!tradeName || !contactName || !phone || !cep || !address) return json(res,400,{error:'Nome fantasia, nome do contato, telefone, CEP e endereço são obrigatórios'});
+    const event=body.serves_event===true||body.serves_event==='1'||body.serves_event==='on';
+    const store=body.serves_store===true||body.serves_store==='1'||body.serves_store==='on';
+    if(!event&&!store) return json(res,400,{error:'Marque se a marca é cliente/prospect de Evento, Loja ou ambos'});
+    let owner=s.role==='commercial'?s.user_id:text(body.owner_user_id)||null;
+    if(s.role==='admin' && owner){
+      const ok=db.prepare(`SELECT id FROM users WHERE id=? AND role='admin' AND COALESCE(access_scope,'full')='commercial' AND COALESCE(active,1)=1`).get(owner);
+      if(!ok) owner=null;
+    }
+    const id=uid(), created=nowISO();
+    db.prepare(`INSERT INTO crm_clients(id,owner_user_id,trade_name,contact_name,phone,email,cep,address,cnpj,legal_name,serves_event,serves_store,status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id,owner,tradeName,contactName,phone,text(body.email),cep,address,text(body.cnpj),text(body.legal_name),event?1:0,store?1:0,text(body.status)||'prospect',text(body.notes),created,created);
+    return json(res,201,{ok:true,id});
+  }
+
+  const crmClientMatch=pathname.match(/^\/api\/commercial\/client\/([^/]+)$/);
+  if(crmClientMatch && req.method==='GET'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const client=crmClientFor(s,crmClientMatch[1]); if(!client)return json(res,404,{error:'Marca/cliente não encontrada'});
+    const activities=crmActivitiesFor(s,client.id)||[];
+    return json(res,200,{client,activities,commercialUsers:s.role==='admin'?commercialUserList():[],csrf:s.csrf});
+  }
+  if(crmClientMatch && req.method==='PATCH'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const id=crmClientMatch[1], body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const c=crmClientFor(s,id); if(!c)return json(res,404,{error:'Marca/cliente não encontrada'});
+    const tradeName=text(body.trade_name??c.trade_name), contactName=text(body.contact_name??c.contact_name), phone=text(body.phone??c.phone), cep=text(body.cep??c.cep), address=text(body.address??c.address);
+    if(!tradeName || !contactName || !phone || !cep || !address) return json(res,400,{error:'Nome fantasia, nome do contato, telefone, CEP e endereço são obrigatórios'});
+    const event=body.serves_event!==undefined?(body.serves_event===true||body.serves_event==='1'||body.serves_event==='on'):Number(c.serves_event)===1;
+    const store=body.serves_store!==undefined?(body.serves_store===true||body.serves_store==='1'||body.serves_store==='on'):Number(c.serves_store)===1;
+    if(!event&&!store) return json(res,400,{error:'Marque Evento, Loja ou ambos'});
+    let owner=c.owner_user_id;
+    if(s.role==='admin' && body.owner_user_id!==undefined){
+      owner=text(body.owner_user_id)||null;
+      if(owner){
+        const ok=db.prepare(`SELECT id FROM users WHERE id=? AND role='admin' AND COALESCE(access_scope,'full')='commercial' AND COALESCE(active,1)=1`).get(owner);
+        if(!ok) owner=null;
+      }
+    }
+    db.prepare(`UPDATE crm_clients SET owner_user_id=?,trade_name=?,contact_name=?,phone=?,email=?,cep=?,address=?,cnpj=?,legal_name=?,serves_event=?,serves_store=?,status=?,notes=?,updated_at=? WHERE id=?`)
+      .run(owner,tradeName,contactName,phone,text(body.email??c.email),cep,address,text(body.cnpj??c.cnpj),text(body.legal_name??c.legal_name),event?1:0,store?1:0,text(body.status??c.status)||'prospect',text(body.notes??c.notes),nowISO(),id);
+    return json(res,200,{ok:true});
+  }
+  if(crmClientMatch && req.method==='DELETE'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const c=crmClientFor(s,crmClientMatch[1]); if(!c)return json(res,404,{error:'Marca/cliente não encontrada'});
+    db.prepare('DELETE FROM crm_clients WHERE id=?').run(c.id);
+    return json(res,200,{ok:true});
+  }
+
+  const crmActivityCreate=pathname.match(/^\/api\/commercial\/client\/([^/]+)\/activity$/);
+  if(crmActivityCreate && req.method==='POST'){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const client=crmClientFor(s,crmActivityCreate[1]); if(!client)return json(res,404,{error:'Marca/cliente não encontrada'});
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const activityDate=text(body.activity_date), note=text(body.note);
+    if(!activityDate||note.length<2)return json(res,400,{error:'Informe a data e o que foi conversado'});
+    db.prepare(`INSERT INTO crm_activities(id,client_id,user_id,activity_date,note,next_contact_date,next_action,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`)
+      .run(uid(),client.id,s.user_id,activityDate,note,text(body.next_contact_date)||null,text(body.next_action),nowISO(),nowISO());
+    db.prepare('UPDATE crm_clients SET status=?,updated_at=? WHERE id=?').run(client.status==='prospect'?'contacted':client.status,nowISO(),client.id);
+    return json(res,201,{ok:true});
+  }
+
+  const crmActivityMatch=pathname.match(/^\/api\/commercial\/activity\/([^/]+)$/);
+  if(crmActivityMatch && (req.method==='PATCH'||req.method==='DELETE')){
+    const s=requireAuth(req,res,['commercial','admin']); if(!s)return;
+    const a=db.prepare(`SELECT a.*,c.owner_user_id FROM crm_activities a JOIN crm_clients c ON c.id=a.client_id WHERE a.id=?`).get(crmActivityMatch[1]);
+    if(!a || (s.role!=='admin' && a.owner_user_id!==s.user_id))return json(res,404,{error:'Registro não encontrado'});
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    if(req.method==='DELETE'){db.prepare('DELETE FROM crm_activities WHERE id=?').run(a.id);return json(res,200,{ok:true});}
+    db.prepare(`UPDATE crm_activities SET activity_date=?,note=?,next_contact_date=?,next_action=?,updated_at=? WHERE id=?`)
+      .run(text(body.activity_date??a.activity_date),text(body.note??a.note),text(body.next_contact_date??a.next_contact_date)||null,text(body.next_action??a.next_action),nowISO(),a.id);
+    return json(res,200,{ok:true});
+  }
+
+  if(pathname==='/api/admin/staff-users' && req.method==='GET'){
     const s=requireAuth(req,res,['admin']); if(!s)return;
+    return json(res,200,{users:staffUserList(),csrf:s.csrf});
+  }
+  if(pathname==='/api/admin/staff-users' && req.method==='POST'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    if(!text(body.name)||!validEmail(body.email)||String(body.password||'').length<8)return json(res,400,{error:'Nome, e-mail válido e senha de pelo menos 8 caracteres são obrigatórios'});
+    try{return json(res,201,{ok:true,id:createStaffUser({name:body.name,email:body.email,password:String(body.password),profile:body.profile})});}
+    catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
+  }
+  const staffUserMatch=pathname.match(/^\/api\/admin\/staff-user\/([^/]+)$/);
+  if(staffUserMatch && req.method==='PATCH'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const id=staffUserMatch[1],body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    const u=db.prepare(`SELECT * FROM users WHERE id=? AND role='admin'`).get(id); if(!u)return json(res,404,{error:'Usuário não encontrado'});
+    const currentScope=text(u.access_scope||'full').toLowerCase();
+    if(['full','master'].includes(currentScope)) return json(res,403,{error:'O usuário Master é protegido e não pode ter o perfil ou status alterado por esta tela.'});
+    const profile=text(body.profile??staffProfileFromScope(currentScope)).toLowerCase();
+    const scope=staffScopeFromProfile(profile);
+    if(!['commercial','commercial_operational','finance','marketing'].includes(scope))return json(res,400,{error:'Escolha Comercial CRM, Comercial Operacional, Financeiro ou Marketing'});
+    const active=body.active===undefined?Number(u.active??1):(body.active?1:0);
+    try{db.prepare('UPDATE users SET name=?,email=?,access_scope=?,active=? WHERE id=?').run(text(body.name??u.name),normalizeEmail(body.email??u.email),scope,active,id);}
+    catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
+    if(body.new_password){
+      if(String(body.new_password).length<8)return json(res,400,{error:'Senha deve ter pelo menos 8 caracteres'});
+      db.prepare('UPDATE users SET password_hash=?,must_change_password=1,initial_password_enc=? WHERE id=?').run(passwordHash(body.new_password),encryptInitialPassword(body.new_password),id);
+    }
+    if(!active) db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
+    return json(res,200,{ok:true});
+  }
+
+  if(pathname==='/api/admin/commercial-users' && req.method==='GET'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    return json(res,200,{users:commercialUserList(),csrf:s.csrf});
+  }
+  if(pathname==='/api/admin/commercial-users' && req.method==='POST'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
+    if(!text(body.name)||!validEmail(body.email)||String(body.password||'').length<8)return json(res,400,{error:'Nome, e-mail válido e senha de pelo menos 8 caracteres são obrigatórios'});
+    try{return json(res,201,{ok:true,id:createCommercialUser({name:body.name,email:body.email,password:String(body.password)})});}
+    catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
+  }
+  const commercialUserMatch=pathname.match(/^\/api\/admin\/commercial-user\/([^/]+)$/);
+  if(commercialUserMatch && req.method==='PATCH'){
+    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const id=commercialUserMatch[1],body=await readJson(req);if(!verifyCsrf(req,res,s,body))return;
+    const u=db.prepare(`SELECT * FROM users WHERE id=? AND role='admin' AND COALESCE(access_scope,'full')='commercial'`).get(id);if(!u)return json(res,404,{error:'Usuário comercial não encontrado'});
+    try{db.prepare('UPDATE users SET name=?,email=?,active=? WHERE id=?').run(text(body.name??u.name),normalizeEmail(body.email??u.email),body.active===undefined?Number(u.active??1):(body.active?1:0),id);}catch(e){if(String(e.message).includes('UNIQUE'))return json(res,409,{error:'Este e-mail já está em uso'});throw e;}
+    if(body.new_password){if(String(body.new_password).length<8)return json(res,400,{error:'Senha deve ter pelo menos 8 caracteres'});db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash(body.new_password),id);}
+    if(body.active===false) db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
+    return json(res,200,{ok:true});
+  }
+
+  if(pathname==='/api/admin/overview' && req.method==='GET'){
+    const s=requireAuth(req,res,['admin','commercial_operational']); if(!s)return;
     const counts={
       brands:db.prepare('SELECT COUNT(*) AS n FROM brands').get().n,
       openBills:db.prepare(`SELECT COUNT(*) AS n FROM bills WHERE status NOT IN ('paid','cancelled')`).get().n,
       pendingDocs:db.prepare(`SELECT COUNT(*) AS n FROM requirements WHERE status NOT IN ('approved','done')`).get().n,
-      unreadMessages:db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE sender_role='brand' AND read_by_admin=0`).get().n
+      unreadMessages:db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE sender_role='brand' AND read_by_admin=0`).get().n,
+      commercialUsers:db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role='admin' AND COALESCE(access_scope,'full')='commercial' AND COALESCE(active,1)=1`).get().n,
+      crmClients:db.prepare('SELECT COUNT(*) AS n FROM crm_clients').get().n,
+      staffUsers:db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role='admin' AND COALESCE(access_scope,'full') NOT IN ('full','master') AND COALESCE(active,1)=1`).get().n
     };
-    return json(res,200,{counts,brands:adminBrandList(),csrf:s.csrf,structures:Object.keys(STRUCTURES)});
+    return json(res,200,{counts,brands:adminBrandList(),commercialUsers:s.role==='admin'?commercialUserList():[],staffUsers:s.role==='admin'?staffUserList():[],csrf:s.csrf,structures:Object.keys(STRUCTURES)});
   }
 
   if(pathname==='/api/admin/brands' && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','commercial_operational']); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     if(!text(body.name) || !validEmail(body.login_email) || String(body.password||'').length<8) return json(res,400,{error:'Nome, e-mail de login válido e senha (mín. 8 caracteres) são obrigatórios'});
     if(!validEmail(body.contact_email)) return json(res,400,{error:'Cadastre um e-mail de contato válido para a marca. Ele será usado no envio do contrato.'});
@@ -808,13 +1134,21 @@ async function api(req,res,url){
       const fileId=saveBufferFile({brandId:id,kind:'contract_generated',label:'Contrato gerado para assinatura',originalName:`Contrato_Carandai25_${safeFileName(body.name)}.pdf`,mime:'application/pdf',buffer:pdfBuffer});
       const at=nowISO();
       db.prepare(`UPDATE contracts SET status='pending',file_id=?,generated_at=?,terms_json=?,updated_at=? WHERE brand_id=?`).run(fileId,at,JSON.stringify(terms),at,id);
-      return json(res,201,{ok:true,id,contract_generated:true});
+      let email_sent=false,email_error='',email_provider='';
+      try{
+        const mail=await sendContractEmail({brandId:id,to:body.contact_email});
+        email_sent=true;
+        email_provider=mail.provider||'';
+      }catch(mailErr){
+        email_error=String(mailErr?.message||mailErr||'Falha no envio automático do contrato');
+      }
+      return json(res,201,{ok:true,id,contract_generated:true,email_sent,email_error,email_provider});
     }catch(e){ if(String(e.message).includes('UNIQUE')) return json(res,409,{error:'Este e-mail já está em uso'}); throw e; }
   }
 
   const brandMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)$/);
   if(brandMatch && req.method==='GET'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','commercial_operational']); if(!s)return;
     const id=brandMatch[1];
     const snap=brandSnapshot(id); if(!snap)return json(res,404,{error:'Marca não encontrada'});
     const login=db.prepare(`SELECT id,name,email,must_change_password,CASE WHEN initial_password_enc IS NOT NULL AND initial_password_enc<>'' THEN 1 ELSE 0 END AS has_temporary_password FROM users WHERE brand_id=? AND role='brand'`).get(id);
@@ -822,7 +1156,7 @@ async function api(req,res,url){
     return json(res,200,{...snap,login,csrf:s.csrf,structures:STRUCTURES,email_config:emailStatus()});
   }
   if(brandMatch && req.method==='PATCH'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','commercial_operational']); if(!s)return;
     const id=brandMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const b=db.prepare('SELECT * FROM brands WHERE id=?').get(id); if(!b)return json(res,404,{error:'Marca não encontrada'});
     const segment=text(body.segment||b.segment); let structure=safeJson(b.structure_json,{});
@@ -856,7 +1190,7 @@ async function api(req,res,url){
 
   const contractMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract$/);
   if(contractMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance','commercial_operational']); if(!s)return;
     const brandId=contractMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     let fileId=c.file_id;
@@ -868,7 +1202,7 @@ async function api(req,res,url){
 
   const contractGenerateMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/generate$/);
   if(contractGenerateMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance','commercial_operational']); if(!s)return;
     const brandId=contractGenerateMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     const previous=safeJson(c.terms_json,defaultContractTerms());
@@ -879,7 +1213,7 @@ async function api(req,res,url){
 
   const contractSignedMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/signed$/);
   if(contractSignedMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance','commercial_operational']); if(!s)return;
     const brandId=contractSignedMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const c=db.prepare('SELECT * FROM contracts WHERE brand_id=?').get(brandId); if(!c)return json(res,404,{error:'Contrato não encontrado'});
     if(!body.file) return json(res,400,{error:'Selecione o PDF assinado.'});
@@ -893,14 +1227,14 @@ async function api(req,res,url){
 
   const contractEmailMatch=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/contract\/email$/);
   if(contractEmailMatch && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance','commercial_operational']); if(!s)return;
     const brandId=contractEmailMatch[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const result=await sendContractEmail({brandId,to:body.to});
     return json(res,200,{ok:true,...result});
   }
 
   if(pathname==='/api/admin/email/test' && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const result=await sendEmailTest(body.to);
     return json(res,200,{ok:true,...result});
@@ -908,7 +1242,7 @@ async function api(req,res,url){
 
   const billCreate=pathname.match(/^\/api\/admin\/brand\/([^/]+)\/bills$/);
   if(billCreate && req.method==='POST'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const brandId=billCreate[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     let fileId=null; if(body.file) fileId=saveBase64File({brandId,kind:'bill',label:text(body.label)||'Boleto',file:body.file});
     db.prepare(`INSERT INTO bills(id,brand_id,installment,label,amount_cents,due_date,status,file_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`)
@@ -918,7 +1252,7 @@ async function api(req,res,url){
 
   const billUpdate=pathname.match(/^\/api\/admin\/bill\/([^/]+)$/);
   if(billUpdate && req.method==='PATCH'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const id=billUpdate[1]; const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const b=db.prepare('SELECT * FROM bills WHERE id=?').get(id); if(!b)return json(res,404,{error:'Boleto não encontrado'});
     let fileId=b.file_id; if(body.file) fileId=saveBase64File({brandId:b.brand_id,kind:'bill',label:text(body.label)||b.label,file:body.file});
@@ -928,7 +1262,7 @@ async function api(req,res,url){
     return json(res,200,{ok:true});
   }
   if(billUpdate && req.method==='DELETE'){
-    const s=requireAuth(req,res,['admin']); if(!s)return;
+    const s=requireAuth(req,res,['admin','finance']); if(!s)return;
     const body=await readJson(req); if(!verifyCsrf(req,res,s,body))return;
     const b=db.prepare('SELECT * FROM bills WHERE id=?').get(billUpdate[1]); if(!b)return json(res,404,{error:'Boleto não encontrado'});
     db.prepare('DELETE FROM bills WHERE id=?').run(billUpdate[1]); removeFileIfUnreferenced(b.file_id); return json(res,200,{ok:true});
@@ -995,7 +1329,7 @@ const server=http.createServer(async (req,res)=>{
 });
 
 server.listen(PORT,()=>{
-  console.log(`\nCarandaí 25 · Portal da Marca v4.8`);
+  console.log(`\nCarandaí 25 · Portal da Marca v5.1 · CRM Comercial`);
   console.log(`Acesse: http://localhost:${PORT}`);
   console.log(`Storage: ${STORAGE_ROOT}`);
   if(process.env.NODE_ENV!=='production'){

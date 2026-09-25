@@ -1,22 +1,33 @@
-CARANDAI 25 PORTAL DA MARCA
-Versao 4.4.0 - GitHub Ready / Railway Ready
-Compatível com: Android, iOS, Windows, macOS, Linux
+CARANDAI 25 PORTAL
+Versao 5.1.0 - Integracao CRM Comercial + Acessos por Setor
+GitHub Ready / Railway Ready
 
-NOVIDADES V4.4.0:
-- Login page: Corrigido bug de duplicate variable declarations em viewContract()
-- Estrutura: Otimização de imagens (650px max-height com crisp-edges rendering)
-- Cache: 24 horas para imagens PNG/JPG
-- Responsivo: Melhorias mobile (Android/iOS), tablet, desktop (Windows/macOS/Linux)
+NOVIDADES V5.1.0:
+- Mantem o Portal da Marca atual, contratos automaticos, boletos, documentos e e-mail.
+- Novo CRM Comercial com cadastro de marcas/prospects.
+- CNPJ e razao social opcionais no CRM.
+- Classificacao independente: Evento, Loja ou Evento + Loja.
+- Agenda comercial por data.
+- Linha do tempo completa de contatos por marca.
+- Proxima acao e proximo contato.
+- Relatorios de clientes Evento, Loja e Evento + Loja.
+- Exportacao CSV e relatorio individual para impressao/PDF.
+- Usuarios internos com uma tela unica de login.
+- Usuario Master com acesso total.
+- Perfis Comercial, Financeiro e Marketing com acessos separados.
+- Master pode criar, editar, ativar, desativar e redefinir senha de usuarios internos.
+- Financeiro pode operar contratos, PDFs assinados, envio de contrato e boletos.
+- Marketing acessa dados basicos da marca e mensagens do setor.
+- Comercial acessa somente o CRM e sua carteira; Master visualiza toda a base.
+- Migracoes do SQLite preservam o banco existente do Railway.
 
-SISTEMA OPERACIONAL:
-✓ Android 8.0+ (Chrome, Firefox, Samsung Internet)
-✓ iOS 12.0+ (Safari, Chrome)
-✓ Windows 10+ (Edge, Chrome, Firefox)
-✓ macOS 10.13+ (Safari, Chrome, Firefox)
-✓ Linux (Chrome, Firefox, Edge)
+SEGURANCA:
+- Perfis internos usam permissoes no servidor, nao apenas ocultacao visual.
+- Usuarios novos recebem senha temporaria e fazem troca no primeiro acesso.
+- O usuario Master nao pode ser alterado pela tela de usuarios internos.
+- Dados existentes do volume /storage nao sao apagados pela atualizacao.
 
-REQUISITOS TÉCNICOS:
-- Browser com suporte ES6
-- JavaScript habilitado
-- Cookie/LocalStorage habilitado
-- Conexão HTTPS recomendada
+PUBLICACAO:
+- Trabalhar primeiro na branch feature/crm-comercial-v5-1.
+- Nao fazer merge para main antes do teste final.
+- Railway continua apontado para main ate aprovacao.

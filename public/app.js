@@ -5,7 +5,10 @@
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
   const state = {
     me:null, csrf:null, data:null, admin:null, brandDetail:null,
-    view:null, selectedSector:'Logística', adminTab:'summary', search:'', passwordChangeRequired:false
+    commercial:null, crmDetail:null, commercialUsers:null, staff:null, staffDetail:null, staffUsers:null,
+    view:null, selectedSector:'Logística', adminTab:'summary', search:'', passwordChangeRequired:false,
+    crmSearch:'', crmFilter:'all', crmReportFilter:'all', crmTab:'timeline',
+    crmMonth:new Date().toISOString().slice(0,7)
   };
 
   const authScreen=$('#authScreen'), portal=$('#portal'), content=$('#content'), sideNav=$('#sideNav'), sidebar=$('#sidebar');
@@ -39,7 +42,8 @@
     const apply=()=>{const count=Math.max(1,Math.min(MAX_CONTRACT_INSTALLMENTS,Number(select.value)||1));$$('[data-installment-field]',form).forEach(field=>{const active=Number(field.dataset.installmentField)<=count;field.classList.toggle('hidden',!active);$('input',field).disabled=!active;$('input',field).required=active;});};
     select.addEventListener('change',apply); apply();
   }
-  function statusLabel(s){return ({pending:'Pendente',received:'Recebido',approved:'Aprovado',done:'Concluído',paid:'Pago',overdue:'Vencido',rejected:'Reprovado',draft:'Rascunho',signed:'Assinado',active:'Ativo',inactive:'Inativo',cancelled:'Cancelado'}[s]||s||'—');}
+  function statusLabel(s){return ({pending:'Pendente',received:'Recebido',approved:'Aprovado',done:'Concluído',paid:'Pago',overdue:'Vencido',rejected:'Reprovado',draft:'Rascunho',signed:'Assinado',active:'Ativo',inactive:'Inativo',cancelled:'Cancelado',prospect:'Novo contato',contacted:'Contatado',negotiation:'Em negociação',client:'Cliente',paused:'Pausado'}[s]||s||'—');}
+  function todayISO(){const d=new Date();const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
   function status(s){return `<span class="status ${esc(s)}">${esc(statusLabel(s))}</span>`;}
   function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>toastEl.classList.remove('show'),2800);}
   function showError(err){toast(err?.message||'Não foi possível concluir a ação.');}
@@ -76,27 +80,52 @@
   function showAuth(){authScreen.classList.remove('hidden');portal.classList.add('hidden');}
   function showPortal(){authScreen.classList.add('hidden');portal.classList.remove('hidden');}
   function setShell(){
-    $('#roleChip').textContent=state.me.role==='admin'?'Admin':'Marca';
+    const role=state.me.role;
+    const roleLabels={admin:'Master',commercial:'Comercial CRM',commercial_operational:'Comercial Operacional',finance:'Financeiro',marketing:'Marketing',brand:'Marca'};
+    $('#roleChip').textContent=roleLabels[role]||'Portal';
     $('#avatarInitials').textContent=initials(state.me.name);
-    $('#sideBrand').textContent=state.me.role==='admin'?'GESTÃO CARANDAÍ 25':(state.me.brand?.name||'Minha marca');
-    $('#sideMeta').textContent=state.me.role==='admin'?'Operação · Rio 2026':'Jockey Club · 05–08 NOV';
-    const nav=state.me.role==='admin' ? [
-      ['admin-home','Visão geral','01'],['admin-brands','Marcas','02'],['admin-pending','Pendências','03']
+    if(role==='admin'){
+      $('#sideBrand').textContent='GESTÃO CARANDAÍ 25';
+      $('#sideMeta').textContent='ACESSO MASTER';
+    }else if(role==='commercial'){
+      $('#sideBrand').textContent='COMERCIAL CRM';
+      $('#sideMeta').textContent='CRM · MARCAS & CLIENTES';
+    }else if(role==='commercial_operational'){
+      $('#sideBrand').textContent='COMERCIAL OPERACIONAL';
+      $('#sideMeta').textContent='CADASTRO · CONTRATOS';
+    }else if(role==='finance'){
+      $('#sideBrand').textContent='EQUIPE FINANCEIRO';
+      $('#sideMeta').textContent='CONTRATOS · BOLETOS';
+    }else if(role==='marketing'){
+      $('#sideBrand').textContent='EQUIPE MARKETING';
+      $('#sideMeta').textContent='COMUNICAÇÃO · MARCAS';
+    }else{
+      $('#sideBrand').textContent=state.me.brand?.name||'Minha marca';
+      $('#sideMeta').textContent='Jockey Club · 05–08 NOV';
+    }
+    const nav=role==='admin' ? [
+      ['admin-home','Visão geral','01'],['admin-brands','Marcas do evento','02'],['admin-pending','Pendências','03'],['commercial-home','CRM Comercial','04'],['admin-users','Usuários e acessos','05']
+    ] : role==='commercial' ? [
+      ['commercial-home','Início','01'],['commercial-clients','Marcas / Clientes','02'],['commercial-agenda','Agenda','03'],['commercial-reports','Relatórios','04']
+    ] : role==='commercial_operational' ? [
+      ['admin-home','Início','01'],['admin-brands','Marcas / Contratos','02']
+    ] : role==='finance' || role==='marketing' ? [
+      ['staff-home','Início','01'],['staff-brands','Marcas','02']
     ] : [
       ['home','Início','01'],['event','Meu evento','02'],['contract','Contrato','03'],['bills','Boletos','04'],['structure','Estrutura','05'],['docs','Documentos','06'],['manuals','Manuais','07'],['messages','Mensagens','08'],['contacts','Equipe','09'],['profile','Perfil','10']
     ];
     sideNav.innerHTML=nav.map(([id,label,n])=>`<button class="nav-item" data-view="${id}"><span>${label}</span><span>${n}</span></button>`).join('');
     $$('.nav-item',sideNav).forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));
   }
-  function activateNav(view){$$('.nav-item',sideNav).forEach(b=>b.classList.toggle('active',b.dataset.view===view||(view==='admin-brand'&&b.dataset.view==='admin-brands')));}
+  function activateNav(view){$$('.nav-item',sideNav).forEach(b=>b.classList.toggle('active',b.dataset.view===view||(view==='admin-brand'&&b.dataset.view==='admin-brands')||(view==='commercial-client'&&b.dataset.view==='commercial-clients')||(view==='staff-brand'&&b.dataset.view==='staff-brands')));}
   function closeSidebar(){sidebar.classList.remove('open');}
 
   async function boot(){
     try{
       const me=await api('/api/me');
       state.me={...me.user,brand:me.brand};state.csrf=me.csrf;state.passwordChangeRequired=!!me.user.must_change_password;showPortal();setShell();
-      if(state.me.role==='brand' && state.passwordChangeRequired){ openPasswordChangeModal(true); return; }
-      await navigate(state.me.role==='admin'?'admin-home':'home');
+      if(state.me.role!=='admin' && state.passwordChangeRequired){ openPasswordChangeModal(true); return; }
+      await navigate(state.me.role==='admin'?'admin-home':state.me.role==='commercial'?'commercial-home':state.me.role==='commercial_operational'?'admin-home':['finance','marketing'].includes(state.me.role)?'staff-home':'home');
     }catch(e){showAuth();}
   }
 
@@ -109,9 +138,9 @@
       state.csrf=r.csrf;await boot();
     }catch(err){msg.textContent=err.message;}
   });
-  $('#logoutButton').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'});}catch{} state.me=null;state.csrf=null;state.data=null;showAuth();closeSidebar();});
+  $('#logoutButton').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'});}catch{} state.me=null;state.csrf=null;state.data=null;state.commercial=null;state.crmDetail=null;state.staff=null;state.staffDetail=null;showAuth();closeSidebar();});
   $('#menuToggle').addEventListener('click',()=>sidebar.classList.toggle('open'));
-  $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':'profile'));
+  $('#avatarButton').addEventListener('click',()=>navigate(state.me?.role==='admin'?'admin-home':state.me?.role==='commercial'?'commercial-home':state.me?.role==='commercial_operational'?'admin-home':['finance','marketing'].includes(state.me?.role)?'staff-home':'profile'));
   modalBackdrop.addEventListener('click',e=>{if(e.target===modalBackdrop)closeModal();});
 
   function openModal(html){modal.innerHTML=html;modalBackdrop.classList.remove('hidden');$('.modal-close',modal)?.addEventListener('click',closeModal);bindPasswordToggles(modal);}
@@ -137,18 +166,30 @@
     state.view=view;activateNav(view);closeSidebar();window.scrollTo({top:0,behavior:'smooth'});
     content.innerHTML='<div class="loading"><div><div class="loading-mark">25</div><p>Carregando...</p></div></div>';
     try{
+
       if(state.me.role==='brand'){
         await loadBrand();
         const fn={home:viewHome,event:viewEvent,contract:viewContract,bills:viewBills,structure:viewStructure,docs:viewDocs,manuals:viewManuals,messages:viewMessages,contacts:viewContacts,profile:viewProfile}[view]||viewHome;
-        fn();
-      }else{
-        if(view==='admin-brand') await loadAdminBrand(param||state.brandDetail?.brand?.id);
-        else await loadAdmin();
-        if(view==='admin-home') viewAdminHome();
-        else if(view==='admin-pending') viewAdminPending();
-        else if(view==='admin-brand') viewAdminBrand();
-        else viewAdminBrands();
+        fn(); return;
       }
+      if(view.startsWith('commercial-')){
+        if(!['admin','commercial'].includes(state.me.role)){await navigate('staff-home');return;}
+        if(view==='commercial-client'){await loadCrmClient(param||state.crmDetail?.client?.id);viewCommercialClient();}
+        else{await loadCommercial();if(view==='commercial-home')viewCommercialHome();else if(view==='commercial-agenda')viewCommercialAgenda();else if(view==='commercial-reports')viewCommercialReports();else viewCommercialClients();}
+        return;
+      }
+      if(['finance','marketing'].includes(state.me.role)){
+        if(view==='staff-brand'){await loadStaffBrand(param||state.staffDetail?.brand?.id);viewStaffBrand();}
+        else{await loadStaff();if(view==='staff-brands')viewStaffBrands();else viewStaffHome();}
+        return;
+      }
+      if(state.me.role==='commercial'){await navigate('commercial-home');return;}
+      if(view==='admin-users'){if(state.me.role!=='admin'){await navigate('admin-home');return;}await loadStaffUsers();viewAdminUsers();return;}
+      if(view==='admin-brand') await loadAdminBrand(param||state.brandDetail?.brand?.id); else await loadAdmin();
+      if(view==='admin-home') viewAdminHome();
+      else if(view==='admin-pending') viewAdminPending();
+      else if(view==='admin-brand') viewAdminBrand();
+      else viewAdminBrands();
     }catch(err){
       if(err.status===401){showAuth();return;}
       content.innerHTML=`<div class="empty"><strong>Algo não carregou.</strong>${esc(err.message)}</div>`;
@@ -157,6 +198,16 @@
   async function loadBrand(){state.data=await api('/api/dashboard');}
   async function loadAdmin(){state.admin=await api('/api/admin/overview');state.csrf=state.admin.csrf||state.csrf;}
   async function loadAdminBrand(id){if(!id)throw new Error('Selecione uma marca.');state.brandDetail=await api(`/api/admin/brand/${encodeURIComponent(id)}`);state.csrf=state.brandDetail.csrf||state.csrf;}
+  async function loadStaff(){state.staff=await api('/api/staff/overview');state.csrf=state.staff.csrf||state.csrf;}
+  async function loadStaffBrand(id){if(!id)throw new Error('Selecione uma marca.');state.staffDetail=await api(`/api/staff/brand/${encodeURIComponent(id)}`);state.csrf=state.staffDetail.csrf||state.csrf;}
+  async function loadStaffUsers(){state.staffUsers=await api('/api/admin/staff-users');state.csrf=state.staffUsers.csrf||state.csrf;}
+  async function reloadManagedBrand(id){
+    if(state.me.role==='finance'){await loadStaffBrand(id);state.brandDetail=state.staffDetail;}
+    else await loadAdminBrand(id);
+  }
+  async function loadCommercial(){state.commercial=await api('/api/commercial/overview');state.csrf=state.commercial.csrf||state.csrf;}
+  async function loadCrmClient(id){if(!id)throw new Error('Selecione uma marca/cliente.');state.crmDetail=await api(`/api/commercial/client/${encodeURIComponent(id)}`);state.csrf=state.crmDetail.csrf||state.csrf;}
+  async function loadCommercialUsers(){state.commercialUsers=await api('/api/admin/commercial-users');state.csrf=state.commercialUsers.csrf||state.csrf;}
 
   function pageHead(kicker,title,desc,meta='',metaLabel=''){
     return `<div class="page-head"><div><span class="kicker">${esc(kicker)}</span><h1>${title}</h1>${desc?`<p>${esc(desc)}</p>`:''}</div>${meta?`<div class="head-meta"><strong>${esc(meta)}</strong><span>${esc(metaLabel)}</span></div>`:''}</div>`;
@@ -306,15 +357,245 @@
     $('#changeOwnPassword').addEventListener('click',()=>openPasswordChangeModal(false));
   }
 
+
+  /* CRM COMERCIAL */
+  function crmType(c){
+    const tags=[];if(Number(c.serves_event)===1)tags.push('<span class="crm-tag event">Evento</span>');if(Number(c.serves_store)===1)tags.push('<span class="crm-tag store">Loja</span>');return tags.join(' ');
+  }
+  function crmFilterRows(rows,filter=state.crmFilter,search=state.crmSearch){
+    return rows.filter(c=>{
+      const q=String(search||'').trim().toLowerCase();
+      const hit=!q||`${c.trade_name} ${c.contact_name} ${c.phone} ${c.email||''} ${c.cnpj||''} ${c.legal_name||''} ${c.address||''}`.toLowerCase().includes(q);
+      const type=filter==='all'||(filter==='event'&&Number(c.serves_event)===1)||(filter==='store'&&Number(c.serves_store)===1)||(filter==='both'&&Number(c.serves_event)===1&&Number(c.serves_store)===1);
+      return hit&&type;
+    });
+  }
+  function crmClientTable(rows){
+    return `<div class="crm-table"><div class="crm-line head"><div>Marca / Cliente</div><div>Contato</div><div>Atuação</div><div>Status</div><div>Último contato</div><div>Próximo</div><div></div></div>${rows.map(c=>`<div class="crm-line" data-crm="${c.id}"><div><div class="name">${esc(c.trade_name)}</div>${state.me.role==='admin'&&c.owner_name?`<div class="seg">Responsável: ${esc(c.owner_name)}</div>`:''}</div><div><strong>${esc(c.contact_name)}</strong><span>${esc(c.phone)}</span></div><div>${crmType(c)}</div><div>${status(c.status)}</div><div>${fmtDate(c.last_contact)}</div><div>${fmtDate(c.next_contact)}</div><div>→</div></div>`).join('')||'<div class="empty"><strong>Nenhum cadastro encontrado.</strong>Use “Nova marca / cliente” para começar o histórico comercial.</div>'}</div>`;
+  }
+  function bindCrmRows(){$$('[data-crm]',content).forEach(r=>{r.style.cursor='pointer';r.addEventListener('click',()=>{state.crmTab='timeline';navigate('commercial-client',r.dataset.crm)});});}
+  function crmFilters(){return `<div class="crm-filterbar"><input class="search" id="crmSearch" placeholder="Buscar marca, contato, telefone ou CNPJ" value="${esc(state.crmSearch)}"><select id="crmFilter" class="search"><option value="all" ${state.crmFilter==='all'?'selected':''}>Todos</option><option value="event" ${state.crmFilter==='event'?'selected':''}>Evento</option><option value="store" ${state.crmFilter==='store'?'selected':''}>Loja</option><option value="both" ${state.crmFilter==='both'?'selected':''}>Evento + Loja</option></select><button class="btn btn-dark" id="newCrmClient">+ Nova marca / cliente</button></div>`;}
+
+  function viewCommercialHome(){
+    const d=state.commercial,c=d.counts,today=todayISO();
+    const upcoming=d.activities.filter(a=>a.next_contact_date&&a.next_contact_date>=today).sort((a,b)=>String(a.next_contact_date).localeCompare(String(b.next_contact_date))).slice(0,8);
+    const recent=d.activities.slice(0,6);
+    content.innerHTML=`${pageHead('COMERCIAL CARANDAÍ 25','Relacionamento <em>com marcas.</em>','Histórico de prospecção, agenda e clientes de Evento e Loja.',String(c.total),'MARCAS / CLIENTES')}
+      <section class="hero-panel crm-hero"><div><span class="kicker">CRM COMERCIAL</span><h2>Cada conversa.<br>Todo o histórico.</h2><p>Cadastre marcas novas mesmo sem CNPJ ou razão social, registre o que foi conversado por data e acompanhe os próximos contatos.</p></div><div class="event-side"><strong>${c.event}</strong><span>Evento</span><strong style="margin-top:18px">${c.store}</strong><span>Loja · ${c.both} em ambos</span></div></section>
+      <div class="metric-grid"><div class="metric"><div class="num">${c.total}</div><div class="label">Marcas / clientes</div></div><div class="metric blue"><div class="num">${c.event}</div><div class="label">Evento</div></div><div class="metric"><div class="num">${c.store}</div><div class="label">Loja</div></div><div class="metric attention"><div class="num">${upcoming.length}</div><div class="label">Próximos contatos</div></div></div>
+      <div class="inline-actions crm-home-actions"><button class="btn btn-dark" id="crmHomeNew">+ Cadastrar marca</button><button class="btn" id="crmHomeAgenda">Abrir agenda</button><button class="btn" id="crmHomeReports">Relatórios</button></div>
+      <div class="two-col"><div><div class="section-title"><h2>Próximos contatos</h2><p>Follow-ups anotados na agenda.</p></div>${upcoming.length?`<div class="agenda-list">${upcoming.map(a=>`<button class="agenda-item" data-crm="${a.client_id}"><div class="agenda-date">${fmtDate(a.next_contact_date)}</div><div><strong>${esc(a.trade_name)}</strong><p>${esc(a.next_action||'Retomar contato')}</p></div><span>→</span></button>`).join('')}</div>`:'<div class="empty"><strong>Agenda livre.</strong>Nenhum próximo contato programado.</div>'}</div><div><div class="section-title"><h2>Conversas recentes</h2><p>Últimos registros da equipe.</p></div>${recent.length?`<div class="timeline compact">${recent.map(a=>`<div class="timeline-item"><div class="timeline-dot"></div><div><span>${fmtDate(a.activity_date)} · ${esc(a.user_name||'Comercial')}</span><strong>${esc(a.trade_name)}</strong><p>${nl(a.note)}</p></div></div>`).join('')}</div>`:'<div class="empty"><strong>Sem histórico ainda.</strong>Registre o primeiro contato com uma marca.</div>'}</div></div>`;
+    $('#crmHomeNew').addEventListener('click',()=>openCrmClientModal());
+    $('#crmHomeAgenda').addEventListener('click',()=>navigate('commercial-agenda'));
+    $('#crmHomeReports').addEventListener('click',()=>navigate('commercial-reports'));
+    $$('[data-crm]',content).forEach(x=>x.addEventListener('click',()=>navigate('commercial-client',x.dataset.crm)));
+  }
+
+  function viewCommercialClients(){
+    const rows=crmFilterRows(state.commercial.clients);
+    content.innerHTML=`${pageHead('BASE COMERCIAL','Marcas & <em>clientes.</em>','CNPJ e razão social podem ser preenchidos depois. O histórico começa desde o primeiro contato.',String(rows.length),'RESULTADOS')}${crmFilters()}${crmClientTable(rows)}`;
+    $('#crmSearch').addEventListener('input',e=>{state.crmSearch=e.target.value;viewCommercialClients();$('#crmSearch')?.focus();});
+    $('#crmFilter').addEventListener('change',e=>{state.crmFilter=e.target.value;viewCommercialClients();});
+    $('#newCrmClient').addEventListener('click',()=>openCrmClientModal());
+    bindCrmRows();
+  }
+
+  function openCrmClientModal(client=null){
+    const isAdmin=state.me.role==='admin';
+    const users=state.commercial?.commercialUsers||state.crmDetail?.commercialUsers||[];
+    openModal(`${modalHead(client?'Editar marca / cliente':'Nova marca / cliente','CRM COMERCIAL')}<form id="crmClientForm" class="form-grid">
+      <div class="field"><label>Nome fantasia<input name="trade_name" value="${esc(client?.trade_name||'')}" required></label></div>
+      <div class="field"><label>Nome do contato<input name="contact_name" value="${esc(client?.contact_name||'')}" required></label></div>
+      <div class="field"><label>Telefone de contato<input name="phone" value="${esc(client?.phone||'')}" required></label></div>
+      <div class="field"><label>E-mail<input name="email" type="email" value="${esc(client?.email||'')}"></label></div>
+      <div class="field"><label>CEP<input name="cep" value="${esc(client?.cep||'')}" required></label></div>
+      <div class="field full"><label>Endereço<input name="address" value="${esc(client?.address||'')}" required></label></div>
+      <div class="field"><label>CNPJ <small>opcional</small><input name="cnpj" value="${esc(client?.cnpj||'')}"></label></div>
+      <div class="field"><label>Razão social <small>opcional</small><input name="legal_name" value="${esc(client?.legal_name||'')}"></label></div>
+      <div class="field"><label>Status<select name="status">${['prospect','contacted','negotiation','client','paused'].map(x=>`<option value="${x}" ${client?.status===x?'selected':''}>${statusLabel(x)}</option>`).join('')}</select></label></div>
+      ${isAdmin?`<div class="field"><label>Responsável comercial<select name="owner_user_id"><option value="">Sem responsável</option>${users.map(u=>`<option value="${u.id}" ${client?.owner_user_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('')}</select></label></div>`:''}
+      <div class="field full"><span class="field-label">Relacionamento</span><div class="crm-checks"><label><input type="checkbox" name="serves_event" ${Number(client?.serves_event)===1?'checked':''}> Evento</label><label><input type="checkbox" name="serves_store" ${Number(client?.serves_store)===1?'checked':''}> Loja</label></div><small>A mesma marca pode ser Evento e Loja ao mesmo tempo.</small></div>
+      <div class="field full"><label>Observação geral<textarea name="notes">${esc(client?.notes||'')}</textarea></label></div>
+      <div class="field full"><button class="btn btn-dark" type="submit">${client?'Salvar cadastro':'Cadastrar marca / cliente'}</button></div>
+    </form>`);
+    $('#crmClientForm').addEventListener('submit',async e=>{e.preventDefault();try{const fd=new FormData(e.target);const body=Object.fromEntries(fd.entries());body.serves_event=$('[name="serves_event"]',e.target).checked;body.serves_store=$('[name="serves_store"]',e.target).checked;const url=client?`/api/commercial/client/${client.id}`:'/api/commercial/clients';await api(url,{method:client?'PATCH':'POST',body});closeModal();toast(client?'Cadastro atualizado.':'Marca cadastrada no CRM.');await loadCommercial();if(client){await loadCrmClient(client.id);viewCommercialClient();}else viewCommercialClients();}catch(err){showError(err)}});
+  }
+
+  function viewCommercialClient(){
+    const d=state.crmDetail,c=d.client;
+    content.innerHTML=`${pageHead('HISTÓRICO COMERCIAL',esc(c.trade_name),'Cadastro, conversas e agenda desta marca.',statusLabel(c.status),'STATUS')}
+      <div class="crm-client-head"><div><div class="crm-type-wrap">${crmType(c)}</div><h2>${esc(c.contact_name)}</h2><p>${esc(c.phone)}${c.email?` · ${esc(c.email)}`:''}</p></div><div class="inline-actions"><button class="btn btn-dark" id="addCrmActivity">+ Registrar contato</button><button class="btn" id="editCrmClient">Editar cadastro</button></div></div>
+      <div class="admin-tabs">${[['timeline','Linha do tempo'],['profile','Cadastro'],['agenda','Agenda']].map(([id,l])=>`<button class="admin-tab ${state.crmTab===id?'active':''}" data-crmtab="${id}">${l}</button>`).join('')}</div><div id="crmPanel" class="admin-panel"></div>`;
+    $$('[data-crmtab]',content).forEach(x=>x.addEventListener('click',()=>{state.crmTab=x.dataset.crmtab;renderCrmTab();}));
+    $('#addCrmActivity').addEventListener('click',()=>openCrmActivityModal(c.id));
+    $('#editCrmClient').addEventListener('click',()=>openCrmClientModal(c));
+    renderCrmTab();
+  }
+  function crmPanel(){return $('#crmPanel');}
+  function renderCrmTab(){if(state.crmTab==='profile')renderCrmProfile();else if(state.crmTab==='agenda')renderCrmClientAgenda();else renderCrmTimeline();}
+  function renderCrmTimeline(){
+    const d=state.crmDetail,c=d.client;
+    crmPanel().innerHTML=`<div class="admin-toolbar"><span class="mini-label">LINHA DO TEMPO · ${d.activities.length} REGISTRO(S)</span><div class="inline-actions"><button class="btn btn-small" id="printCrmTimeline">Imprimir relatório</button><button class="btn btn-dark btn-small" id="timelineAdd">+ Novo contato</button></div></div>${d.activities.length?`<div class="timeline">${d.activities.map(a=>`<div class="timeline-item"><div class="timeline-dot"></div><div><span>${fmtDate(a.activity_date)} · ${esc(a.user_name||'Equipe Comercial')}</span><strong>${nl(a.note)}</strong>${a.next_contact_date?`<p>Próximo contato: ${fmtDate(a.next_contact_date)}${a.next_action?` · ${esc(a.next_action)}`:''}</p>`:''}<div class="timeline-actions"><button class="link-button" data-editactivity="${a.id}">editar</button><button class="link-button danger-link" data-delactivity="${a.id}">excluir</button></div></div></div>`).join('')}</div>`:'<div class="empty"><strong>Nenhuma conversa registrada.</strong>Adicione o primeiro contato para iniciar a linha do tempo.</div>'}`;
+    $('#timelineAdd').addEventListener('click',()=>openCrmActivityModal(c.id));
+    $('#printCrmTimeline').addEventListener('click',()=>printCrmClientReport());
+    $$('[data-editactivity]',crmPanel()).forEach(x=>x.addEventListener('click',()=>openCrmActivityModal(c.id,d.activities.find(a=>a.id===x.dataset.editactivity))));
+    $$('[data-delactivity]',crmPanel()).forEach(x=>x.addEventListener('click',async()=>{if(!confirm('Excluir este registro da linha do tempo?'))return;try{await api(`/api/commercial/activity/${x.dataset.delactivity}`,{method:'DELETE',body:{}});toast('Registro excluído.');await loadCrmClient(c.id);renderCrmTimeline();}catch(err){showError(err)}}));
+  }
+
+  function renderCrmProfile(){
+    const c=state.crmDetail.client;
+    crmPanel().innerHTML=`<div class="two-col"><div class="card"><span class="label">MARCA / CLIENTE</span><h3>${esc(c.trade_name)}</h3><div class="rule-list"><div class="rule-row"><div><div class="title">Nome do contato</div><div class="sub">${esc(c.contact_name)}</div></div></div><div class="rule-row"><div><div class="title">Telefone</div><div class="sub">${esc(c.phone)}</div></div></div><div class="rule-row"><div><div class="title">E-mail</div><div class="sub">${esc(c.email||'Não informado')}</div></div></div><div class="rule-row"><div><div class="title">Relacionamento</div><div class="sub">${crmType(c)||'Não definido'}</div></div></div></div></div><div class="card"><span class="label">DADOS CADASTRAIS</span><h3>${esc(c.legal_name||'Razão social não informada')}</h3><div class="rule-list"><div class="rule-row"><div><div class="title">CNPJ</div><div class="sub">${esc(c.cnpj||'Não informado')}</div></div></div><div class="rule-row"><div><div class="title">CEP</div><div class="sub">${esc(c.cep)}</div></div></div><div class="rule-row"><div><div class="title">Endereço</div><div class="sub">${esc(c.address)}</div></div></div></div><p>${nl(c.notes||'')}</p><button class="btn btn-small" id="profileCrmEdit">Editar cadastro</button></div></div>`;
+    $('#profileCrmEdit').addEventListener('click',()=>openCrmClientModal(c));
+  }
+
+  function renderCrmClientAgenda(){
+    const c=state.crmDetail.client,items=state.crmDetail.activities.filter(a=>a.next_contact_date).sort((a,b)=>String(a.next_contact_date).localeCompare(String(b.next_contact_date)));
+    crmPanel().innerHTML=`<div class="admin-toolbar"><span class="mini-label">PRÓXIMOS CONTATOS PROGRAMADOS</span><button class="btn btn-dark btn-small" id="agendaClientAdd">+ Agendar / registrar</button></div>${items.length?`<div class="agenda-list">${items.map(a=>`<div class="agenda-item static"><div class="agenda-date">${fmtDate(a.next_contact_date)}</div><div><strong>${esc(a.next_action||'Retomar contato')}</strong><p>Origem: conversa de ${fmtDate(a.activity_date)}</p></div></div>`).join('')}</div>`:'<div class="empty"><strong>Nenhum follow-up programado.</strong>Ao registrar uma conversa, defina a próxima data de contato.</div>'}`;
+    $('#agendaClientAdd').addEventListener('click',()=>openCrmActivityModal(c.id));
+  }
+
+  function openCrmActivityModal(clientId,activity=null,defaultDate=''){
+    const client=(state.crmDetail?.client?.id===clientId?state.crmDetail.client:state.commercial?.clients.find(c=>c.id===clientId));
+    openModal(`${modalHead(activity?'Editar contato':'Registrar conversa',client?.trade_name||'AGENDA COMERCIAL')}<form id="crmActivityForm" class="form-grid"><div class="field"><label>Data da conversa<input type="date" name="activity_date" value="${esc(activity?.activity_date||defaultDate||todayISO())}" required></label></div><div class="field"><label>Próximo contato<input type="date" name="next_contact_date" value="${esc(activity?.next_contact_date||'')}"></label></div><div class="field full"><label>O que foi conversado<textarea name="note" required>${esc(activity?.note||'')}</textarea></label></div><div class="field full"><label>Próxima ação<textarea name="next_action" placeholder="Ex.: enviar proposta, ligar novamente, confirmar coleção...">${esc(activity?.next_action||'')}</textarea></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar no histórico</button></div></form>`);
+    $('#crmActivityForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());const url=activity?`/api/commercial/activity/${activity.id}`:`/api/commercial/client/${clientId}/activity`;await api(url,{method:activity?'PATCH':'POST',body});closeModal();toast('Histórico atualizado.');await loadCommercial();if(state.view==='commercial-client'){await loadCrmClient(clientId);viewCommercialClient();}else if(state.view==='commercial-agenda')viewCommercialAgenda();else viewCommercialHome();}catch(err){showError(err)}});
+  }
+
+  function openAgendaActivityModal(date){
+    const clients=state.commercial.clients;
+    if(!clients.length){toast('Cadastre uma marca antes de criar um contato.');return;}
+    openModal(`${modalHead('Agenda comercial',fmtDate(date))}<form id="agendaActivityForm" class="form-grid"><div class="field full"><label>Marca / cliente<select name="client_id">${clients.map(c=>`<option value="${c.id}">${esc(c.trade_name)} · ${esc(c.contact_name)}</option>`).join('')}</select></label></div><div class="field"><label>Data da conversa<input type="date" name="activity_date" value="${esc(date)}" required></label></div><div class="field"><label>Próximo contato<input type="date" name="next_contact_date"></label></div><div class="field full"><label>O que foi conversado<textarea name="note" required></textarea></label></div><div class="field full"><label>Próxima ação<textarea name="next_action"></textarea></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar na agenda</button></div></form>`);
+    $('#agendaActivityForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());const id=body.client_id;delete body.client_id;await api(`/api/commercial/client/${id}/activity`,{method:'POST',body});closeModal();toast('Contato salvo na agenda.');await loadCommercial();viewCommercialAgenda();}catch(err){showError(err)}});
+  }
+
+  function calendarHtml(month,activities){
+    const [y,m]=month.split('-').map(Number),first=new Date(y,m-1,1),days=new Date(y,m,0).getDate(),start=first.getDay();
+    const names=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];let html=`<div class="calendar-head">${names.map(n=>`<div>${n}</div>`).join('')}</div><div class="calendar-grid">`;
+    for(let i=0;i<start;i++)html+='<div class="calendar-day empty-day"></div>';
+    for(let day=1;day<=days;day++){const date=`${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;const conv=activities.filter(a=>a.activity_date===date);const follow=activities.filter(a=>a.next_contact_date===date);html+=`<button class="calendar-day ${date===todayISO()?'today':''}" data-agenda-date="${date}"><span class="day-num">${day}</span>${conv.slice(0,2).map(a=>`<span class="cal-chip">${esc(a.trade_name)}</span>`).join('')}${follow.slice(0,2).map(a=>`<span class="cal-chip follow">↗ ${esc(a.trade_name)}</span>`).join('')}${conv.length+follow.length>4?`<small>+${conv.length+follow.length-4}</small>`:''}</button>`;}
+    return html+'</div>';
+  }
+
+  function viewCommercialAgenda(){
+    const d=state.commercial,today=todayISO(),upcoming=d.activities.filter(a=>a.next_contact_date&&a.next_contact_date>=today).sort((a,b)=>String(a.next_contact_date).localeCompare(String(b.next_contact_date))).slice(0,20);
+    content.innerHTML=`${pageHead('AGENDA COMERCIAL','Agenda & <em>follow-up.</em>','Clique em uma data para registrar o que foi conversado. O próximo contato também fica programado.',state.crmMonth,'MÊS')}
+      <div class="admin-toolbar"><input type="month" class="search" id="crmMonth" value="${esc(state.crmMonth)}"><button class="btn btn-dark" id="agendaToday">+ Registrar hoje</button></div>
+      <div class="calendar">${calendarHtml(state.crmMonth,d.activities)}</div>
+      <div class="section-title"><h2>Próximos contatos</h2><p>Agenda futura de todas as suas marcas.</p></div>${upcoming.length?`<div class="agenda-list">${upcoming.map(a=>`<button class="agenda-item" data-crm="${a.client_id}"><div class="agenda-date">${fmtDate(a.next_contact_date)}</div><div><strong>${esc(a.trade_name)}</strong><p>${esc(a.next_action||'Retomar contato')} · último registro ${fmtDate(a.activity_date)}</p></div><span>→</span></button>`).join('')}</div>`:'<div class="empty"><strong>Nenhum próximo contato.</strong>Use a agenda para programar os follow-ups.</div>'}`;
+    $('#crmMonth').addEventListener('change',e=>{state.crmMonth=e.target.value;viewCommercialAgenda();});
+    $('#agendaToday').addEventListener('click',()=>openAgendaActivityModal(todayISO()));
+    $$('[data-agenda-date]',content).forEach(x=>x.addEventListener('click',()=>openAgendaActivityModal(x.dataset.agendaDate)));
+    $$('[data-crm]',content).forEach(x=>x.addEventListener('click',()=>navigate('commercial-client',x.dataset.crm)));
+  }
+
+  function reportRows(){return crmFilterRows(state.commercial.clients,state.crmReportFilter,'');}
+  function viewCommercialReports(){
+    const rows=reportRows();
+    content.innerHTML=`${pageHead('RELATÓRIOS COMERCIAIS','Clientes por <em>canal.</em>','Filtre Evento, Loja ou marcas que trabalham nos dois formatos.',String(rows.length),'CADASTROS')}
+      <div class="report-filter"><button class="btn ${state.crmReportFilter==='all'?'btn-dark':''}" data-reportfilter="all">Todos</button><button class="btn ${state.crmReportFilter==='event'?'btn-dark':''}" data-reportfilter="event">Evento</button><button class="btn ${state.crmReportFilter==='store'?'btn-dark':''}" data-reportfilter="store">Loja</button><button class="btn ${state.crmReportFilter==='both'?'btn-dark':''}" data-reportfilter="both">Evento + Loja</button></div>
+      <div class="metric-grid report-metrics"><div class="metric"><div class="num">${state.commercial.counts.total}</div><div class="label">Total</div></div><div class="metric blue"><div class="num">${state.commercial.counts.event}</div><div class="label">Evento</div></div><div class="metric"><div class="num">${state.commercial.counts.store}</div><div class="label">Loja</div></div><div class="metric"><div class="num">${state.commercial.counts.both}</div><div class="label">Evento + Loja</div></div></div>
+      <div class="admin-toolbar"><span class="mini-label">RELATÓRIO: ${esc(({all:'Todos',event:'Evento',store:'Loja',both:'Evento + Loja'})[state.crmReportFilter])}</span><div class="inline-actions"><button class="btn btn-small" id="printCrmReport">Imprimir</button><button class="btn btn-dark btn-small" id="exportCrmCsv">Exportar CSV</button></div></div>${crmClientTable(rows)}`;
+    $$('[data-reportfilter]',content).forEach(b=>b.addEventListener('click',()=>{state.crmReportFilter=b.dataset.reportfilter;viewCommercialReports();}));
+    $('#printCrmReport').addEventListener('click',()=>printCrmList(rows));
+    $('#exportCrmCsv').addEventListener('click',()=>downloadCrmCsv(rows));
+    bindCrmRows();
+  }
+
+  function downloadCrmCsv(rows){
+    const head=['Nome fantasia','Contato','Telefone','E-mail','CEP','Endereço','CNPJ','Razão social','Evento','Loja','Status','Responsável','Último contato','Próximo contato'];
+    const vals=rows.map(c=>[c.trade_name,c.contact_name,c.phone,c.email,c.cep,c.address,c.cnpj,c.legal_name,Number(c.serves_event)===1?'Sim':'Não',Number(c.serves_store)===1?'Sim':'Não',statusLabel(c.status),c.owner_name||state.me.name,c.last_contact||'',c.next_contact||'']);
+    const csv=[head,...vals].map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(';')).join('\\n');const blob=new Blob(['\\ufeff'+csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`carandai25-relatorio-${state.crmReportFilter}-${todayISO()}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  }
+  function printWindow(title,body){const w=window.open('','_blank');if(!w)return toast('Permita pop-ups para imprimir o relatório.');w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:32px}h1{font-family:Georgia,serif;font-style:italic;font-weight:400}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid #bbb;text-align:left;padding:8px}.meta{color:#666;font-size:11px}.item{border-bottom:1px solid #aaa;padding:14px 0}.item h3{margin:4px 0}.tag{display:inline-block;border:1px solid #111;padding:3px 6px;margin-right:4px;font-size:10px}</style></head><body><div class="meta">CARANDAÍ 25 · COMERCIAL · ${new Date().toLocaleDateString('pt-BR')}</div>${body}</body></html>`);w.document.close();w.focus();setTimeout(()=>w.print(),250);}
+  function printCrmList(rows){printWindow('Relatório Comercial Carandaí 25',`<h1>Relatório de marcas / clientes</h1><p>${rows.length} cadastro(s) · filtro: ${esc(({all:'Todos',event:'Evento',store:'Loja',both:'Evento + Loja'})[state.crmReportFilter])}</p><table><thead><tr><th>Marca</th><th>Contato</th><th>Telefone</th><th>Tipo</th><th>Status</th></tr></thead><tbody>${rows.map(c=>`<tr><td>${esc(c.trade_name)}</td><td>${esc(c.contact_name)}</td><td>${esc(c.phone)}</td><td>${Number(c.serves_event)===1?'Evento ':''}${Number(c.serves_store)===1?'Loja':''}</td><td>${esc(statusLabel(c.status))}</td></tr>`).join('')}</tbody></table>`);}
+  function printCrmClientReport(){const d=state.crmDetail,c=d.client;printWindow(`Linha do tempo · ${c.trade_name}`,`<h1>${esc(c.trade_name)}</h1><p>${esc(c.contact_name)} · ${esc(c.phone)}${c.email?' · '+esc(c.email):''}</p><p><span class="tag">${Number(c.serves_event)===1?'Evento':''}</span>${Number(c.serves_store)===1?'<span class="tag">Loja</span>':''} · ${esc(statusLabel(c.status))}</p><h2>Linha do tempo</h2>${d.activities.map(a=>`<div class="item"><div class="meta">${fmtDate(a.activity_date)} · ${esc(a.user_name||'Equipe Comercial')}</div><h3>${nl(a.note)}</h3>${a.next_contact_date?`<p>Próximo contato: ${fmtDate(a.next_contact_date)} · ${esc(a.next_action||'')}</p>`:''}</div>`).join('')||'<p>Nenhum contato registrado.</p>'}`);}
+
+  function profileLabel(p){return ({master:'Master',commercial_crm:'Comercial CRM',commercial_operational:'Comercial Operacional',finance:'Financeiro',marketing:'Marketing'}[p]||p||'—');}
+  function viewAdminUsers(){
+    const users=state.staffUsers.users||[];
+    content.innerHTML=`${pageHead('ACESSOS DO PORTAL','Usuários & <em>permissões.</em>','O Master cria os usuários internos. Todos entram pela mesma tela principal e veem apenas o setor autorizado.',String(users.filter(u=>Number(u.active)===1).length),'ATIVOS')}
+      <div class="card access-explainer"><span class="label">PERFIS</span><div class="access-grid"><div><strong>Master</strong><p>Acesso total e gestão de usuários.</p></div><div><strong>Comercial</strong><p>CRM, agenda, histórico e relatórios.</p></div><div><strong>Financeiro</strong><p>Contratos, boletos e atendimento financeiro.</p></div><div><strong>Marketing</strong><p>Dados básicos e atendimento de Marketing.</p></div></div></div>
+      <div class="admin-toolbar"><span class="mini-label">USUÁRIOS INTERNOS</span><button class="btn btn-dark" id="newStaffUser">+ Novo usuário</button></div>
+      <div class="brand-table"><div class="staff-user-line head"><div>Usuário</div><div>E-mail</div><div>Perfil</div><div>Status</div><div></div></div>
+      ${users.map(u=>`<div class="staff-user-line"><div><div class="name">${esc(u.name)}</div>${u.profile==='master'?'<div class="seg">Usuário principal protegido</div>':''}</div><div>${esc(u.email)}</div><div><span class="access-badge ${esc(u.profile)}">${esc(profileLabel(u.profile))}</span></div><div>${Number(u.active)===1?status('active'):status('inactive')}</div><div>${u.profile==='master'?'<span class="mini-label">MASTER</span>':`<button class="btn btn-small" data-editstaff="${u.id}">Editar</button>`}</div></div>`).join('')}</div>`;
+    $('#newStaffUser').addEventListener('click',()=>openStaffUserModal());
+    $$('[data-editstaff]',content).forEach(x=>x.addEventListener('click',()=>openStaffUserModal(users.find(u=>u.id===x.dataset.editstaff))));
+  }
+  function openStaffUserModal(user=null){
+    openModal(`${modalHead(user?'Editar usuário':'Novo usuário interno','USUÁRIOS E ACESSOS')}<form id="staffUserForm" class="form-grid">
+      <div class="field"><label>Nome<input name="name" value="${esc(user?.name||'')}" required></label></div>
+      <div class="field"><label>E-mail de login<input name="email" type="email" value="${esc(user?.email||'')}" required></label></div>
+      <div class="field"><label>Perfil de acesso<select name="profile" required><option value="commercial_crm" ${user?.profile==='commercial_crm'?'selected':''}>Comercial CRM</option><option value="commercial_operational" ${user?.profile==='commercial_operational'?'selected':''}>Comercial Operacional</option><option value="finance" ${user?.profile==='finance'?'selected':''}>Financeiro</option><option value="marketing" ${user?.profile==='marketing'?'selected':''}>Marketing</option></select></label></div>
+      <div class="field"><label>${user?'Nova senha temporária':'Senha inicial'}<div class="password-wrap"><input id="staffTempPassword" name="password" type="password" minlength="8" ${user?'placeholder="Deixe em branco para manter"':'required'}><button type="button" class="password-toggle" data-password-toggle="staffTempPassword">Ver</button></div></label><small>${user?'Preencha somente para redefinir.':'No primeiro acesso o usuário deverá criar uma nova senha.'}</small></div>
+      ${user?`<div class="field full"><div class="crm-checks"><label><input type="checkbox" id="staffActive" ${Number(user.active)===1?'checked':''}> Usuário ativo</label></div></div>`:''}
+      <div class="field full"><button class="btn btn-dark" type="submit">Salvar usuário e acesso</button></div>
+    </form>`);
+    bindPasswordToggles(modal);
+    $('#staffUserForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());if(user){body.new_password=body.password;delete body.password;if(!body.new_password)delete body.new_password;body.active=$('#staffActive').checked;await api(`/api/admin/staff-user/${user.id}`,{method:'PATCH',body});}else await api('/api/admin/staff-users',{method:'POST',body});closeModal();toast('Usuário e permissão salvos.');await loadStaffUsers();viewAdminUsers();}catch(err){showError(err)}});
+  }
+
+  function staffBrandTable(rows){
+    const finance=state.me.role==='finance';
+    return `<div class="brand-table"><div class="staff-brand-line head"><div>Marca</div><div>Contato</div><div>${finance?'Contrato':'Segmento'}</div><div>${finance?'Boletos':'Msgs'}</div><div></div></div>${rows.map(b=>`<div class="staff-brand-line" data-staffbrand="${b.id}"><div><div class="name">${esc(b.name)}</div><div class="seg">${esc(b.legal_name||'')}</div></div><div><strong>${esc(b.contact_name||'—')}</strong><span>${esc(b.contact_email||'')}</span></div><div>${finance?status(b.contract_status||'pending'):esc(b.segment||'—')}</div><div>${finance?Number(b.open_bills||0):Number(b.unread_messages||0)}</div><div>→</div></div>`).join('')||'<div class="empty"><strong>Nenhuma marca cadastrada.</strong></div>'}</div>`;
+  }
+  function bindStaffRows(){$$('[data-staffbrand]',content).forEach(r=>{r.style.cursor='pointer';r.addEventListener('click',()=>navigate('staff-brand',r.dataset.staffbrand));});}
+  function viewStaffHome(){
+    const d=state.staff,c=d.counts,finance=state.me.role==='finance';
+    content.innerHTML=`${pageHead(finance?'FINANCEIRO':'MARKETING',finance?'Painel <em>Financeiro.</em>':'Painel de <em>Marketing.</em>',finance?'Contratos, cobranças e mensagens financeiras das marcas.':'Comunicação com as marcas pelo canal de Marketing.',String(c.brands),'MARCAS')}
+      <div class="metric-grid"><div class="metric"><div class="num">${c.brands}</div><div class="label">Marcas</div></div>${finance?`<div class="metric attention"><div class="num">${c.openBills}</div><div class="label">Boletos em aberto</div></div><div class="metric blue"><div class="num">${c.unsigned}</div><div class="label">Contratos não assinados</div></div>`:'<div class="metric blue"><div class="num">MKT</div><div class="label">Canal de atendimento</div></div><div class="metric"><div class="num">25</div><div class="label">Carandaí</div></div>'}<div class="metric ${c.unreadMessages?'attention':''}"><div class="num">${c.unreadMessages}</div><div class="label">Mensagens não lidas</div></div></div>
+      <div class="section-title"><h2>Marcas</h2><p>Clique para abrir o atendimento do seu setor.</p></div>${staffBrandTable(d.brands.slice(0,10))}`;
+    bindStaffRows();
+  }
+  function viewStaffBrands(){
+    const rows=state.staff.brands.filter(b=>!state.search||`${b.name} ${b.contact_name} ${b.contact_email} ${b.cnpj}`.toLowerCase().includes(state.search.toLowerCase()));
+    content.innerHTML=`${pageHead(state.me.role==='finance'?'FINANCEIRO':'MARKETING','Marcas <em>cadastradas.</em>','Acesse somente as funções do seu setor.',String(rows.length),'RESULTADOS')}<div class="admin-toolbar"><input class="search" id="staffSearch" placeholder="Buscar marca, contato, e-mail ou CNPJ" value="${esc(state.search)}"></div>${staffBrandTable(rows)}`;
+    $('#staffSearch').addEventListener('input',e=>{state.search=e.target.value;viewStaffBrands();$('#staffSearch')?.focus();});bindStaffRows();
+  }
+  function viewStaffBrand(){
+    const d=state.staffDetail,b=d.brand,finance=state.me.role==='finance';
+    if(finance){
+      state.brandDetail=d;
+      const tab=state.adminTab==='bills'?'bills':state.adminTab==='messages'?'messages':'contract';
+      state.adminTab=tab;
+      content.innerHTML=`${pageHead('FINANCEIRO DA MARCA',esc(b.name),'Contrato, boletos e conversa financeira.',b.segment||'—','SEGMENTO')}
+        <div class="two-col"><div class="card"><span class="label">CONTATO</span><h3>${esc(b.contact_name||'—')}</h3><p>${esc(b.contact_email||'')} · ${esc(b.phone||'')}</p></div><div class="card"><span class="label">CADASTRO</span><h3>${esc(b.legal_name||'Razão social não informada')}</h3><p>CNPJ: ${esc(b.cnpj||'Não informado')}</p></div></div>
+        <div class="admin-tabs">${[['contract','Contrato'],['bills','Boletos'],['messages','Mensagens']].map(([id,l])=>`<button class="admin-tab ${state.adminTab===id?'active':''}" data-stafftab="${id}">${l}</button>`).join('')}</div>
+        <div id="adminPanel" class="admin-panel"></div>`;
+      $$('[data-stafftab]',content).forEach(x=>x.addEventListener('click',()=>{state.adminTab=x.dataset.stafftab;$$('[data-stafftab]',content).forEach(t=>t.classList.toggle('active',t.dataset.stafftab===state.adminTab));renderFinanceTab();}));
+      renderFinanceTab();return;
+    }
+    content.innerHTML=`${pageHead('MARKETING DA MARCA',esc(b.name),'Contato e conversa com o Marketing.',b.segment||'—','SEGMENTO')}
+      <div class="two-col"><div class="card"><span class="label">CONTATO</span><h3>${esc(b.contact_name||'—')}</h3><p>${esc(b.contact_email||'')} · ${esc(b.phone||'')}</p><p>${esc(b.address||'')}</p></div><div class="card"><span class="label">CADASTRO</span><h3>${esc(b.legal_name||'Razão social não informada')}</h3><p>CNPJ: ${esc(b.cnpj||'Não informado')}</p></div></div>
+      <div class="section-title"><h2>Mensagens · ${esc(d.sector)}</h2><p>Histórico exclusivo do Marketing.</p></div><div id="staffMessageArea">${staffMessageLayout(d.messages,d.sector)}</div>`;
+    bindStaffMessages(d);
+  }
+  function renderFinanceTab(){
+    state.brandDetail=state.staffDetail;
+    if(state.adminTab==='bills')renderAdminBills();
+    else if(state.adminTab==='messages')renderFinanceMessages();
+    else renderAdminContract();
+  }
+  function renderFinanceMessages(){
+    const d=state.staffDetail;
+    adminPanel().innerHTML=staffMessageLayout(d.messages,d.sector);
+    bindStaffMessages(d);
+  }
+  function staffMessageLayout(msgs,sector){return `<div class="thread standalone"><div class="messages" id="staffThreadMessages">${msgs.length?msgs.map(m=>`<div class="bubble ${m.sender_role==='admin'?'mine':''}"><div class="meta">${esc(m.sender_name)} · ${fmtDateTime(m.created_at)}</div><p>${nl(m.body)}</p></div>`).join(''):'<div class="empty"><strong>Nenhuma mensagem ainda.</strong>Inicie a conversa abaixo.</div>'}</div><form class="message-form" id="staffMessageForm"><textarea id="staffMessageText" placeholder="Escreva para a marca pelo setor ${esc(sector)}..." required></textarea><button class="btn btn-dark" type="submit">Enviar</button></form></div>`;}
+  function bindStaffMessages(d){$('#staffMessageForm')?.addEventListener('submit',async e=>{e.preventDefault();const body=$('#staffMessageText').value.trim();if(!body)return;try{await api(`/api/staff/brand/${d.brand.id}/message`,{method:'POST',body:{body}});toast('Mensagem enviada.');await loadStaffBrand(d.brand.id);if(state.me.role==='finance'){state.brandDetail=state.staffDetail;renderFinanceMessages();}else viewStaffBrand();}catch(err){showError(err)}});const tm=$('#staffThreadMessages');if(tm)tm.scrollTop=tm.scrollHeight;}
+
+
+
   /* ADMIN */
   function viewAdminHome(){
     const a=state.admin,c=a.counts;
     content.innerHTML=`${pageHead('GESTÃO DO PORTAL','Operação <em>Carandaí 25.</em>','Painel interno para administrar o que cada marca vê no próprio login.',String(c.brands),'MARCAS')}
       <section class="hero-panel"><div><span class="kicker">PAINEL INTERNO</span><h2>Uma base única.<br>Cada marca, seu conteúdo.</h2><p>Cadastre marcas, publique contratos e boletos, defina estrutura, aprove documentos e responda mensagens por setor.</p></div><div class="event-side"><strong>05–08 NOV 2026</strong><span>Jockey Club · Rio</span><strong style="margin-top:18px">04 NOV · 13h–19h</strong><span>Montagem</span></div></section>
       <div class="metric-grid"><div class="metric"><div class="num">${c.brands}</div><div class="label">Marcas cadastradas</div></div><div class="metric ${c.openBills?'attention':''}"><div class="num">${c.openBills}</div><div class="label">Boletos em aberto</div></div><div class="metric blue"><div class="num">${c.pendingDocs}</div><div class="label">Documentos pendentes</div></div><div class="metric ${c.unreadMessages?'attention':''}"><div class="num">${c.unreadMessages}</div><div class="label">Mensagens não lidas</div></div></div>
+      <div class="quick-grid" style="margin-top:18px"><button class="quick-card" id="goCrm"><span>CRM COMERCIAL</span><strong>${c.crmClients||0} marcas / clientes</strong><small>${c.staffUsers||0} usuário(s) interno(s)</small></button><button class="quick-card" id="goStaffUsers"><span>USUÁRIOS E ACESSOS</span><strong>Master + setores</strong><small>Comercial, Financeiro e Marketing.</small></button></div>
       <div class="section-title"><h2>Atenção agora</h2><p>Marcas com maior número de pendências.</p></div>
       ${adminBrandTable(a.brands.slice().sort((x,y)=>(y.pending_docs+y.open_bills+y.unread_messages)-(x.pending_docs+x.open_bills+x.unread_messages)).slice(0,8))}`;
     bindBrandRows();
+    $('#goCrm')?.addEventListener('click',()=>navigate('commercial-home'));
+    $('#goStaffUsers')?.addEventListener('click',()=>navigate('admin-users'));
   }
 
   function adminBrandTable(rows){
@@ -398,8 +679,8 @@
     const sentInfo=c.email_status==='sent' ? `Enviado em ${fmtDateTime(c.emailed_at)} para ${esc(c.emailed_to||recipient)}${c.email_provider?` · ${esc(c.email_provider)}`:''}` : c.email_status==='error' ? `Falha no último envio: ${esc(c.email_error||'verifique a configuração de e-mail')}` : 'Ainda não houve envio registrado.';
     adminPanel().innerHTML=`
       <div class="two-col">
-        <div class="card"><span class="label">CONTRATO PARA ASSINATURA</span><h3>${generated?esc(generated.original_name):'Ainda não gerado'}</h3><p>${generated?`Gerado automaticamente${c.generated_at?` em ${fmtDateTime(c.generated_at)}`:''}.`:'Preencha os dados ao lado e gere o contrato.'}</p>${generated?`<button class="btn btn-dark btn-small" id="adminOpenGenerated">Abrir contrato gerado</button>`:''}<div class="note" style="margin-top:14px">Este é o PDF que deve ser conferido e enviado para assinatura digital.</div></div>
-        <div class="card"><span class="label">CONTRATO ASSINADO</span><h3 class="signed-contract-title">Nenhuma via assinada salva</h3><p>${signed?`Assinatura registrada em ${fmtDate(c.signed_at)}.`:'Depois que a assinatura for concluída na Contraktor, salve aqui o PDF assinado.'}</p>${signed?`<button class="btn btn-dark btn-small" id="adminOpenSigned">Abrir contrato assinado</button>`:''}<form id="signedContractForm" class="form-grid" style="margin-top:16px"><div class="field full"><label>PDF assinado<input type="file" id="signedContractFile" accept="application/pdf" required></label></div><div class="field full"><label>Data da assinatura<input type="date" name="signed_at" value="${esc(c.signed_at?.slice(0,10)||todayInput())}"></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar contrato assinado</button></div></form></div>
+        <div class="card"><span class="label">CONTRATO PARA ASSINATURA</span><h3 class="contract-file-name">${generated?esc(generated.original_name):'Ainda não gerado'}</h3><p>${generated?`Gerado automaticamente${c.generated_at?` em ${fmtDateTime(c.generated_at)}`:''}.`:'Preencha os dados ao lado e gere o contrato.'}</p>${generated?`<button class="btn btn-dark btn-small" id="adminOpenGenerated">Abrir contrato gerado</button>`:''}<div class="note" style="margin-top:14px">Este é o PDF que deve ser conferido e enviado para assinatura digital.</div></div>
+        <div class="card"><span class="label">CONTRATO ASSINADO</span><h3 class="signed-contract-title">${signed?esc(signed.original_name):'Nenhuma via assinada salva'}</h3><p>${signed?`Assinatura registrada em ${fmtDate(c.signed_at)}.`:'Depois que a assinatura for concluída na Contraktor, salve aqui o PDF assinado.'}</p>${signed?`<button class="btn btn-dark btn-small" id="adminOpenSigned">Abrir contrato assinado</button>`:''}<form id="signedContractForm" class="form-grid" style="margin-top:16px"><div class="field full"><label>PDF assinado<input type="file" id="signedContractFile" accept="application/pdf" required></label></div><div class="field full"><label>Data da assinatura<input type="date" name="signed_at" value="${esc(c.signed_at?.slice(0,10)||todayInput())}"></label></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar contrato assinado</button></div></form></div>
       </div>
       <div class="section-title"><h2>Gerar / atualizar contrato</h2><p>O PDF é montado automaticamente a partir dos dados abaixo e do modelo oficial do Carandaí 25.</p></div>
       <div class="card"><form id="generateContractForm" class="form-grid">
@@ -420,9 +701,9 @@
     bindInstallmentCount($('#generateContractForm'));
     $('#adminOpenGenerated')?.addEventListener('click',()=>openFile(generated?.id));
     $('#adminOpenSigned')?.addEventListener('click',()=>openFile(signed?.id));
-    $('#generateContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());await api(`/api/admin/brand/${b.id}/contract/generate`,{method:'POST',body});toast('Contrato gerado e salvo automaticamente.');await loadAdminBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
-    $('#signedContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const f=$('#signedContractFile').files[0];if(!f)return toast('Selecione o PDF assinado.');const file=await fileData(f);const signed_at=new FormData(e.target).get('signed_at');await api(`/api/admin/brand/${b.id}/contract/signed`,{method:'POST',body:{file,signed_at}});toast('Contrato assinado salvo separadamente.');await loadAdminBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
-    $('#sendContractEmail')?.addEventListener('click',async()=>{const to=$('#contractEmailTo').value.trim();if(!to)return toast('Informe o e-mail cadastrado da marca.');if(!confirm(`Enviar o contrato de ${b.name} para ${to}?`))return;try{const r=await api(`/api/admin/brand/${b.id}/contract/email`,{method:'POST',body:{to}});toast(`Contrato enviado para ${r.to}.`);await loadAdminBrand(b.id);renderAdminContract();}catch(err){await loadAdminBrand(b.id).catch(()=>{});renderAdminContract();showError(err)}});
+    $('#generateContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());await api(`/api/admin/brand/${b.id}/contract/generate`,{method:'POST',body});toast('Contrato gerado e salvo automaticamente.');await reloadManagedBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
+    $('#signedContractForm').addEventListener('submit',async e=>{e.preventDefault();try{const f=$('#signedContractFile').files[0];if(!f)return toast('Selecione o PDF assinado.');const file=await fileData(f);const signed_at=new FormData(e.target).get('signed_at');await api(`/api/admin/brand/${b.id}/contract/signed`,{method:'POST',body:{file,signed_at}});toast('Contrato assinado salvo separadamente.');await reloadManagedBrand(b.id);renderAdminContract();}catch(err){showError(err)}});
+    $('#sendContractEmail')?.addEventListener('click',async()=>{const to=$('#contractEmailTo').value.trim();if(!to)return toast('Informe o e-mail cadastrado da marca.');if(!confirm(`Enviar o contrato de ${b.name} para ${to}?`))return;try{const r=await api(`/api/admin/brand/${b.id}/contract/email`,{method:'POST',body:{to}});toast(`Contrato enviado para ${r.to}.`);await reloadManagedBrand(b.id);renderAdminContract();}catch(err){await reloadManagedBrand(b.id).catch(()=>{});renderAdminContract();showError(err)}});
     $('#testContractEmail')?.addEventListener('click',async()=>{const to=$('#contractEmailTo').value.trim();if(!to)return toast('Informe o e-mail cadastrado da marca.');try{const r=await api('/api/admin/email/test',{method:'POST',body:{to}});toast(`E-mail de teste enviado via ${r.provider||'serviço configurado'}.`);}catch(err){showError(err)}});
   }
 
@@ -432,12 +713,12 @@
     $('#addBill').addEventListener('click',()=>openBillModal());
     $$('[data-file]',adminPanel()).forEach(x=>x.addEventListener('click',()=>openFile(x.dataset.file)));
     $$('[data-editbill]',adminPanel()).forEach(x=>x.addEventListener('click',()=>openBillModal(d.bills.find(b=>b.id===x.dataset.editbill))));
-    $$('[data-delbill]',adminPanel()).forEach(x=>x.addEventListener('click',async()=>{if(!confirm('Excluir este boleto?'))return;try{await api(`/api/admin/bill/${x.dataset.delbill}`,{method:'DELETE',body:{}});toast('Boleto excluído.');await loadAdminBrand(b.id);renderAdminBills();}catch(err){showError(err)}}));
+    $$('[data-delbill]',adminPanel()).forEach(x=>x.addEventListener('click',async()=>{if(!confirm('Excluir este boleto?'))return;try{await api(`/api/admin/bill/${x.dataset.delbill}`,{method:'DELETE',body:{}});toast('Boleto excluído.');await reloadManagedBrand(b.id);renderAdminBills();}catch(err){showError(err)}}));
   }
   function openBillModal(bill=null){
     const b=state.brandDetail.brand;
     openModal(`${modalHead(bill?'Editar boleto':'Adicionar boleto','FINANCEIRO')}<form id="billForm" class="form-grid"><div class="field"><label>Parcela<input name="installment" type="number" min="1" value="${bill?.installment||1}"></label></div><div class="field"><label>Status<select name="status">${['pending','paid','overdue','cancelled'].map(s=>`<option value="${s}" ${bill?.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}</select></label></div><div class="field full"><label>Descrição<input name="label" value="${esc(bill?.label||'Parcela · Espaço Jockey Club')}" required></label></div><div class="field"><label>Valor (R$)<input name="amount" type="number" min="0" step="0.01" value="${bill?((bill.amount_cents||0)/100).toFixed(2):''}" required></label></div><div class="field"><label>Vencimento<input name="due_date" type="date" value="${esc(bill?.due_date||'')}"></label></div><div class="field full"><label>PDF do boleto<input id="billFile" type="file" accept="application/pdf"></label><small>${bill?.file?'Se não escolher outro PDF, o atual é mantido.':'Opcional: pode cadastrar os dados agora e anexar o PDF depois.'}</small></div><div class="field full"><button class="btn btn-dark" type="submit">Salvar boleto</button></div></form>`);
-    $('#billForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());const f=$('#billFile').files[0];if(f)body.file=await fileData(f);const url=bill?`/api/admin/bill/${bill.id}`:`/api/admin/brand/${b.id}/bills`;await api(url,{method:bill?'PATCH':'POST',body});closeModal();toast('Boleto salvo.');await loadAdminBrand(b.id);renderAdminBills();}catch(err){showError(err)}});
+    $('#billForm').addEventListener('submit',async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(e.target).entries());const f=$('#billFile').files[0];if(f)body.file=await fileData(f);const url=bill?`/api/admin/bill/${bill.id}`:`/api/admin/brand/${b.id}/bills`;await api(url,{method:bill?'PATCH':'POST',body});closeModal();toast('Boleto salvo.');await reloadManagedBrand(b.id);renderAdminBills();}catch(err){showError(err)}});
   }
 
   function renderAdminStructure(){
