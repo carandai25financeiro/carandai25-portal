@@ -624,7 +624,7 @@ async function sendContractEmail({brandId,to}){
   const credentialPassword = Number(brand.must_change_password||0)===1 && initialPassword
     ? `<strong>${htmlEsc(initialPassword)}</strong>`
     : '<em>use a senha pessoal já definida pela marca; para reenviar uma senha temporária, a equipe Carandaí 25 deverá redefini-la no cadastro</em>';
-  const subject=`Contrato + acesso ao Portal da Marca - Carandaí 25 - ${brand.name}`;
+  const subject='Novo Portal - Carandai 25';
   const html=`
     <div style="font-family:Arial,Helvetica,sans-serif;color:#1d1714;line-height:1.55;max-width:680px">
       <p>Olá, ${htmlEsc(responsible)}.</p>
